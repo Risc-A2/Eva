@@ -1,0 +1,35 @@
+#version 450
+layout(local_size_x = 1, local_size_y = 1) in;
+layout(rgba8, binding = 0) uniform writeonly image2D outputImage;
+
+struct Quad {
+    vec2 position;
+    vec2 size;
+    vec4 color;
+};
+
+layout(binding = 1) buffer QuadBuffer {
+    Quad quads[];
+};
+
+void main() {
+    uint startQuadIndex = gl_GlobalInvocationID.x;
+
+    uint quadIndex = startQuadIndex;
+    Quad quad = quads[quadIndex];
+    // Convertir coordenadas world a píxeles
+    ivec2 startPixel = ivec2(quad.position);
+    ivec2 endPixel = ivec2(quad.position + quad.size);
+    for(int y = startPixel.y; y < endPixel.y; y++) {
+        for(int x = startPixel.x; x < endPixel.x; x++) {
+            ivec2 pixelPos = ivec2(x, y);
+            uvec4 color = uvec4(quad.color.x * 255, quad.color.y * 255, quad.color.z * 255, quad.color.w * 255);
+            
+            // Leer color actual (necesitarás cambiar a imageLoad si usas lectura)
+            // Para evitar condiciones de carrera, podrías usar:
+            // Estrategia simple: escribir directamente
+            // Como los quads están ordenados back-to-front, esto funciona
+            imageStore(outputImage, pixelPos, color);
+        }
+    }
+}

@@ -1,0 +1,3 @@
+so to build you do: dotnet build -c Release -p:ExtraDefineConstants=KDMAPI_ENABLED
+why we define KDMAPI? because for rendering its very useful to not have KDMAPI support
+so we added it.

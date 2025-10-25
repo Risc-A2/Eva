@@ -1,0 +1,47 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+        <PublishAot>true</PublishAot>
+        <PublishTrimmed>true</PublishTrimmed>
+        <TrimMode>full</TrimMode>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <OptimizationPreference>Speed</OptimizationPreference>
+        <DefineConstants Condition=" '$(ExtraDefineConstants)' != '' ">$(DefineConstants);$(ExtraDefineConstants)</DefineConstants>
+
+    </PropertyGroup>
+    <ItemGroup>
+      <IlcArg Include="--instruction-set=base,sse,sse2,sse3,ssse3,sse4.1,sse4.2,avx,avx2,aes,bmi,bmi2,fma,lzcnt,pclmul,popcnt" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="FFmpeg.AutoGen" Version="6.0.0" />
+      <PackageReference Include="FreeTypeSharp" Version="3.0.1" />
+      <PackageReference Include="ImGui.NET" Version="1.89.2" />
+      <PackageReference Include="SixLabors.ImageSharp" Version="3.1.10" />
+      <PackageReference Include="StbRectPackSharp" Version="1.0.4" />
+      <PackageReference Include="StbTrueTypeSharp" Version="1.26.12" />
+      <PackageReference Include="Veldrid" Version="4.9.0" />
+      <PackageReference Include="Veldrid.ImGui" Version="5.89.2-ga121087cad" />
+      <PackageReference Include="Veldrid.OpenGLBindings" Version="4.9.0" />
+      <PackageReference Include="Veldrid.SDL2" Version="4.9.0" />
+      <PackageReference Include="Veldrid.SPIRV" Version="1.0.15" />
+      <PackageReference Include="Veldrid.StartupUtilities" Version="4.9.0" />
+      <PackageReference Include="Veldrid.Utilities" Version="4.9.0" />
+    </ItemGroup>
+  <ItemGroup>
+      <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+        <_Parameter1>$(MSBuildProjectName).Test</_Parameter1>
+      </AssemblyAttribute>
+  </ItemGroup>
+    <ItemGroup>
+        <!-- HUH? -->
+      <None Remove="Resources\**" />
+      <EmbeddedResource Include="Resources\**" />
+    </ItemGroup>
+</Project>

@@ -1,0 +1,13 @@
+#version 460
+
+layout(location = 0) in vec2 position;
+layout(location = 1) in vec4 glColor;
+layout(location = 2) in vec2 attrib;
+
+layout(location = 0) out vec4 fragColor;
+
+void main()
+{
+    gl_Position = vec4(position * 2.0 - 1.0, 0.0, 1.0);
+    fragColor = vec4(glColor.xyz * attrib.y + attrib.x, glColor.w);
+}
