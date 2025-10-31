@@ -11,9 +11,9 @@ public enum Endianness
 }
 public static class Bitty
 {
-    private static byte[] shortBuffer = new byte[2];
-    private static byte[] intBuffer = new byte[4];
-    private static byte[] longBuffer = new byte[8];
+    private static readonly byte[] shortBuffer = new byte[2];
+    private static readonly byte[] intBuffer = new byte[4];
+    private static readonly byte[] longBuffer = new byte[8];
     private static byte[] ReadFromStream(Stream stream, byte[] buffer)
     {
         stream.ReadExactly(buffer, 0, buffer.Length);
@@ -65,13 +65,13 @@ public static class Bitty
 
         // Si el endianness solicitado no coincide con el del sistema, invertimos los bytes
         bool needsReverse = (endianness == Endianness.BigEndian) != !BitConverter.IsLittleEndian;
-        
-        
+
+
         if (needsReverse)
         {
             Array.Reverse(bytes);
         }
-        
+
         return BitConverter.ToInt64(bytes, 0);
     }
     public static uint ToUInt32(byte[] bytes, Endianness endianness)
@@ -87,12 +87,12 @@ public static class Bitty
 
         // Si el endianness solicitado no coincide con el del sistema, invertimos los bytes
         bool needsReverse = (endianness == Endianness.BigEndian) != !BitConverter.IsLittleEndian;
-        
+
         if (needsReverse)
         {
             Array.Reverse(bytes);
         }
-        
+
         return BitConverter.ToInt32(bytes, 0);
     }
     public static ushort ToUInt16(byte[] bytes, Endianness endianness)
@@ -108,13 +108,13 @@ public static class Bitty
 
         // Si el endianness solicitado no coincide con el del sistema, invertimos los bytes
         bool needsReverse = (endianness == Endianness.BigEndian) != !BitConverter.IsLittleEndian;
-        
-        
+
+
         if (needsReverse)
         {
             Array.Reverse(bytes);
         }
-        
+
         return BitConverter.ToInt16(bytes, 0);
     }
 }

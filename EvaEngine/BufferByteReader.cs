@@ -6,13 +6,13 @@ namespace EvaEngine;
 
 public class BufferByteReader
 {
-	long pos;
-    int buffersize;
+    long pos;
+    readonly int buffersize;
     int bufferpos;
     int maxbufferpos;
-    long streamstart;
-    long streamlen;
-    Stream stream;
+    readonly long streamstart;
+    readonly long streamlen;
+    readonly Stream stream;
     byte[] buffer;
     byte[] bufferNext;
     //private Memory<byte> buffer;
@@ -35,7 +35,7 @@ public class BufferByteReader
         lock (stream)
         {
             stream.Position = pos + streamstart;
-            stream.Read(bufferNext, 0, buffersize);
+            stream.ReadExactly(bufferNext, 0, buffersize);
             //stream.Read(bufferNext.Span);
         }
     }
@@ -45,7 +45,7 @@ public class BufferByteReader
         lock (stream)
         {
             stream.Position = pos + streamstart + buffersize;
-            stream.Read(bufferNext, 0, buffersize);
+            stream.ReadExactly(bufferNext, 0, buffersize);
             //stream.Read(bufferNext.Span);
         }
     }

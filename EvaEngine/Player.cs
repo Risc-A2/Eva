@@ -30,41 +30,41 @@ public class Player
 	private double midiTime;
 	ImGuiRenderer _controller;
 	private IRender renderer;
-	private RenderSettings settings;
+	private readonly RenderSettings settings;
 	private Process? ffmpeg;
 	private SmartFFProcWrapper Wrapper;
-	private VideoWriter writer;
+	private readonly VideoWriter writer;
 	private DrawFromFBO pipe;
-	private Stream ffmpegInput;
+	private readonly Stream ffmpegInput;
 	private byte[] Bytes;
 	private Sdl2Window window;
 	private CommandList CL;
 	private GraphicsDevice GD;
 	private ResourceFactory RF;
-	private FastList<IDisposable> disposeGroup = new();
+	private readonly FastList<IDisposable> disposeGroup = new();
 	private TextRenderer text;
 	private double livefps;
 	private Framebuffer ffmpegFB;
-	private Texture[] staging = new Texture[3];
+	private readonly Texture[] staging = new Texture[3];
 	private CommandList CLTX;
 	private Texture color;
 	private double StopPoint;
 	private long frameStartTime;
 	private bool KDMAPI_Run;
-	private int deltaTimeOnScreen = 300;
+	private readonly int deltaTimeOnScreen = 300;
 	private double lastdt = 0.016666666666666666d;
 	private double tempoFrameStep;
 	private double lastTempo;
 	private double microsecondsPerTick;
 	private double mv = 1;
-	private int font;
-	private long now;
-	private LinkedList<double> fpsSamples = new();
-	private Fence[] fence = new Fence[3];
+	private readonly int font;
+	private readonly long now;
+	private readonly LinkedList<double> fpsSamples = new();
+	private readonly Fence[] fence = new Fence[3];
 	private int tbI;
 	private bool dontRender = false;
-	private bool RunningKDMAPI = false;
-	private string path;
+	private readonly bool RunningKDMAPI = false;
+	private readonly string path;
 	private Swapchain _swapchain;
 	public Player(RenderSettings cfg, string path)
 	{
@@ -285,9 +285,9 @@ public class Player
 		width, height, PixelFormat.R16_UNorm, false, false));
 		//Create the FFMPEG Render Framebuffer (why is this created even when FFMPEG MODE IS NOT ENABLED?)
 		Texture depth = RF.CreateTexture(new TextureDescription(settings.Width, settings.Height, 1, 1, 1,
-		    (PixelFormat)(_swapchain.Framebuffer.DepthTarget?.Target.Format), TextureUsage.DepthStencil, TextureType.Texture2D));
+			(PixelFormat)(_swapchain.Framebuffer.DepthTarget?.Target.Format), TextureUsage.DepthStencil, TextureType.Texture2D));
 		color = RF.CreateTexture(new TextureDescription(settings.Width, settings.Height, 1, 1, 1,
-		    _swapchain.Framebuffer.ColorTargets[0].Target.Format, TextureUsage.RenderTarget | TextureUsage.Sampled, TextureType.Texture2D));
+			_swapchain.Framebuffer.ColorTargets[0].Target.Format, TextureUsage.RenderTarget | TextureUsage.Sampled, TextureType.Texture2D));
 		for (int i = 0; i < staging.Length; i++)
 		{
 			var t = RF.CreateTexture(new TextureDescription(settings.Width, settings.Height, 1, 1, 1,

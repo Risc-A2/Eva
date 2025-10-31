@@ -1,11 +1,13 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using SixLabors.ImageSharp.Advanced;
+
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Advanced;
 using SixLabors.ImageSharp.Advanced;
 using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.PixelFormats;
+
 using Veldrid;
 using Veldrid.SPIRV;
 
@@ -13,7 +15,7 @@ namespace EvaEngine.Renders;
 
 public class GeometryRender : IRender
 {
-    bool[] m_BKM = new bool[12]
+    readonly bool[] m_BKM = new bool[12]
     {
         false, true, false, true, false, false,
         true, false, true, false, true, false
@@ -23,10 +25,10 @@ public class GeometryRender : IRender
         n = n % 12;
         return m_BKM[n];
     }
-    int quadBufferLength = 75000;
+    readonly int quadBufferLength = 75000;
     Quad[] quads;
     public bool Initialized { get; set; }
-    private FastList<IDisposable> disposables = new();
+    private readonly FastList<IDisposable> disposables = new();
     public void Dispose()
     {
         foreach (var disposable in disposables)
@@ -161,17 +163,17 @@ new RasterizerStateDescription(cullMode: FaceCullMode.None,
     private RgbaFloatEva O1 = new RgbaFloatEva(0f, 0f, 0f, 1f);
     private RgbaFloatEva O2 = new RgbaFloatEva(1f, 1f, 1f, 1f);
     bool[] blackKeys = new bool[257];
-    float[] x1array = new float[257];
-    float[] wdtharray = new float[257];
+    readonly float[] x1array = new float[257];
+    readonly float[] wdtharray = new float[257];
     private byte kbfirstNote;
     private float wdth;
     private byte kblastNote;
-    private RgbaFloatEva[] keyColors = new RgbaFloatEva[514];
-    private RgbaFloatEva[] origColors = new RgbaFloatEva[257];
-    private RgbaFloatEva[] _origColors = new RgbaFloatEva[257];
+    private readonly RgbaFloatEva[] keyColors = new RgbaFloatEva[514];
+    private readonly RgbaFloatEva[] origColors = new RgbaFloatEva[257];
+    private readonly RgbaFloatEva[] _origColors = new RgbaFloatEva[257];
     private RgbaFloatEva O3 = new RgbaFloatEva(0f, 0f, 0f, 0f);
-    private bool[] keyPressed = new bool[257];
-    int[] keynum = new int[257];
+    private readonly bool[] keyPressed = new bool[257];
+    readonly int[] keynum = new int[257];
     DeviceBuffer quadBuffer;
     ResourceLayout resourceLayout;
     private ResourceSet resourceSet;
@@ -191,7 +193,7 @@ new RasterizerStateDescription(cullMode: FaceCullMode.None,
             quadcount = 0;
         }
     }
-    private float pianoHeight = .151f;
+    private readonly float pianoHeight = .151f;
     private int dt = -1;
     private float paddingx;
     private float paddingy;

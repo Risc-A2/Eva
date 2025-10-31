@@ -1,23 +1,29 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
+
+using FreeTypeSharp;
+
+using LinticsPacker;
+
 using SharpGen.Runtime;
+
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Advanced;
 using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+
+using std;
+
 using Veldrid;
 using Veldrid.SPIRV;
 using Veldrid.Utilities;
-using SixLabors.ImageSharp.Processing;
-using System.Text.Json;
-using SixLabors.ImageSharp.Advanced;
-using FreeTypeSharp;
-using std;
-using System.Collections.Concurrent;
-using LinticsPacker;
 
 namespace EvaEngine
 {
@@ -81,9 +87,9 @@ namespace EvaEngine
         // The padding is needed to avoid bleeding between glyphs
         // The padding is needed because the glyphs are packed tightly together
         private const int AtlasSize = 1024;
-        private int _fontSize; // Not used?
-        private float _baseline;
-        private float newLineHeight;
+        private readonly int _fontSize; // Not used?
+        private readonly float _baseline;
+        private readonly float newLineHeight;
         private bool dirty;
         private Memory<L8> pixels;
         // No Ñ because some fucking idiot decided to use ASCII on the font and not UTF-8
@@ -204,9 +210,9 @@ namespace EvaEngine
             };
         }
 
-        private int ascent, descent, lineGap;
-        private Image<L8> image;
-        private Packer packer = new Packer(AtlasSize, AtlasSize, PackAlgorithm.MaxRects);
+        private readonly int ascent, descent, lineGap;
+        private readonly Image<L8> image;
+        private readonly Packer packer = new Packer(AtlasSize, AtlasSize, PackAlgorithm.MaxRects);
         public Texture texture
         {
             get
@@ -327,8 +333,8 @@ namespace EvaEngine
         }
 
         private readonly Sampler sampler;
-        private List<Vertex2D> v = new();
-        private TextureView _tv;
+        private readonly List<Vertex2D> v = new();
+        private readonly TextureView _tv;
 
         public void DrawText(CommandList cl, Framebuffer targetFB, string text, Vector2 normalizedPosition, RgbaFloat color, float scale = 1.0f)
         {

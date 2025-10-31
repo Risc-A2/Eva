@@ -1,5 +1,7 @@
-using NativeLibraryLoader;
 using System.Runtime.InteropServices;
+
+using NativeLibraryLoader;
+
 using Veldrid.Sdl2;
 
 namespace EvaEngine;
@@ -16,9 +18,9 @@ public static class ExtraSDL
     {
         get { return _lib; }
     }
-    
-    private static NativeLibraryLoader.NativeLibrary _lib;
-    
+
+    private static readonly NativeLibraryLoader.NativeLibrary _lib;
+
     static ExtraSDL()
     {
         string[] names = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
@@ -32,7 +34,7 @@ public static class ExtraSDL
         {
             throw new DllNotFoundException("Cant load SDL2.");
         }
-        
+
         // Cargar las funciones como delegates
         SDL_RWFromFile = GetDelegate<SDL_RWFromFileDelegate>("SDL_RWFromFile");
         SDL_LoadBMP_RW = GetDelegate<SDL_LoadBMP_RWDelegate>("SDL_LoadBMP_RW");
@@ -51,19 +53,19 @@ public static class ExtraSDL
         var Dval = Marshal.GetDelegateForFunctionPointer<T>(val);
         return Dval;
     }
-    
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate IntPtr SDL_RWFromMemDelegate(IntPtr mem, int size);
-    
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate IntPtr SDL_GetErrorDelegate();
-    
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate IntPtr SDL_LoadBMP_RWDelegate(IntPtr src, int freesrc);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate IntPtr SDL_RWFromFileDelegate(
-        [MarshalAs(UnmanagedType.LPStr)] string file, 
+        [MarshalAs(UnmanagedType.LPStr)] string file,
         [MarshalAs(UnmanagedType.LPStr)] string mode);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]

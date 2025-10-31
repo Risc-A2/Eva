@@ -59,9 +59,9 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
 {
     private delegate void MidiHandler(byte status);
 
-    private MidiHandler[] _handlers = new MidiHandler[16];
-    private MidiHandler[] _Fasthandlers = new MidiHandler[16];
-    private bool[] _read2byte = {
+    private readonly MidiHandler[] _handlers = new MidiHandler[16];
+    private readonly MidiHandler[] _Fasthandlers = new MidiHandler[16];
+    private readonly bool[] _read2byte = {
         true, // 0
         true, // 1
         true, // 2
@@ -867,7 +867,7 @@ public class MidiFile
     public uint TotalTicks;
     public uint PPQ;
     public int notes;
-    private double lastParsedEnd;
+    private readonly double lastParsedEnd;
     public long currentSyncTime;
     private RenderSettings cfg;
 }

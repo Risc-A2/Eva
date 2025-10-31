@@ -40,15 +40,15 @@ public unsafe partial class C
     {
         memset(ptr.pointer, val, size);
     }
-     public static void memcpy(void* a, void* b, nint startSrc, nint startDst, nint size)
+    public static void memcpy(void* a, void* b, nint startSrc, nint startDst, nint size)
     {
-        var ap = (byte*)a+startSrc;
-        var bp = (byte*)b+startDst;
+        var ap = (byte*)a + startSrc;
+        var bp = (byte*)b + startDst;
         for (long i = 0; i < size; ++i)
             *ap++ = *bp++;
     }
 
-    public static void memcpy(C_MemRegion a, C_MemRegion b,  nint startSrc, nint startDst, nint size)
+    public static void memcpy(C_MemRegion a, C_MemRegion b, nint startSrc, nint startDst, nint size)
     {
         memcpy(a.pointer, b.pointer, startSrc, startDst, size);
     }
@@ -71,7 +71,7 @@ public unsafe partial class C
 
     public static void memcpy(C_MemRegion a, C_MemRegion b, ulong size)
     {
-       memcpy(a.pointer, b.pointer, size);
+        memcpy(a.pointer, b.pointer, size);
     }
     public static C_MemRegion malloc(nuint size)
     {

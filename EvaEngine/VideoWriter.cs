@@ -17,11 +17,11 @@ public unsafe class VideoWriter : IDisposable
     private AVPacket* _packet;
     private AVFormatContext* _formatContext;
     private AVStream* _videoStream;
-    private AVBufferRef* _hwDeviceContext;
+    private readonly AVBufferRef* _hwDeviceContext;
     private int _frameNumber;
     private bool _initialized;
     private string _hardwareDevice;
-    private string _outputPath;
+    private readonly string _outputPath;
 
     public int Width { get; }
     public int Height { get; }

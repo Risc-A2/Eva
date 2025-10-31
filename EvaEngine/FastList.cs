@@ -27,7 +27,7 @@ public class FastList<T> : IEnumerable<T>
     }
     public class Iterator
     {
-        FastList<T> _ilist;
+        readonly FastList<T> _ilist;
 
         private ListItem prev;
         private ListItem curr;
@@ -89,7 +89,7 @@ public class FastList<T> : IEnumerable<T>
 
     public class FastIterator : IEnumerator<T>
     {
-        FastList<T> _ilist;
+        readonly FastList<T> _ilist;
 
         private ListItem curr;
 

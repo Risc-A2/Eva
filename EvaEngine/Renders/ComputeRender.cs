@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+
 using Veldrid;
 using Veldrid.SPIRV;
 
@@ -8,20 +9,20 @@ namespace EvaEngine.Renders;
 
 public class ComputeRender : IRender
 {
-    bool[] m_BKM = new bool[12]
+    readonly bool[] m_BKM = new bool[12]
     {
         false, true, false, true, false, false,
         true, false, true, false, true, false
     };
     bool isBlackNote(int n)
-	{
-		n = n % 12;
-		return m_BKM[n];
-	}
-    int quadBufferLength = 75000;
+    {
+        n = n % 12;
+        return m_BKM[n];
+    }
+    readonly int quadBufferLength = 75000;
     Quad[] quads;
     public bool Initialized { get; set; }
-    private FastList<IDisposable> disposables = new();
+    private readonly FastList<IDisposable> disposables = new();
     public void Dispose()
     {
         foreach (var disposable in disposables)
@@ -121,20 +122,20 @@ public class ComputeRender : IRender
         }
     }
 
-	private RgbaFloatEva O1 = new RgbaFloatEva(0f, 0f, 0f, 1f);
-	private RgbaFloatEva O2 = new RgbaFloatEva(1f, 1f, 1f, 1f);
+    private RgbaFloatEva O1 = new RgbaFloatEva(0f, 0f, 0f, 1f);
+    private RgbaFloatEva O2 = new RgbaFloatEva(1f, 1f, 1f, 1f);
     bool[] blackKeys = new bool[257];
-	float[] x1array = new float[257];
-	float[] wdtharray = new float[257];
-	private byte kbfirstNote;
-	private float wdth;
-	private byte kblastNote;
-	private RgbaFloatEva[] keyColors = new RgbaFloatEva[514];
-	private RgbaFloatEva[] origColors = new RgbaFloatEva[257];
-    private RgbaFloatEva[] _origColors = new RgbaFloatEva[257];
-	private RgbaFloatEva O3 = new RgbaFloatEva(0f, 0f, 0f, 0f);
-	private bool[] keyPressed = new bool[257];
-	int[] keynum = new int[257];
+    readonly float[] x1array = new float[257];
+    readonly float[] wdtharray = new float[257];
+    private byte kbfirstNote;
+    private float wdth;
+    private byte kblastNote;
+    private readonly RgbaFloatEva[] keyColors = new RgbaFloatEva[514];
+    private readonly RgbaFloatEva[] origColors = new RgbaFloatEva[257];
+    private readonly RgbaFloatEva[] _origColors = new RgbaFloatEva[257];
+    private RgbaFloatEva O3 = new RgbaFloatEva(0f, 0f, 0f, 0f);
+    private readonly bool[] keyPressed = new bool[257];
+    readonly int[] keynum = new int[257];
     DeviceBuffer quadBuffer;
     ResourceLayout resourceLayout;
     Pipeline pipeline;
@@ -149,15 +150,15 @@ public class ComputeRender : IRender
             quadcount = 0;
         }
     }
-	private float pianoHeight = .151f;
-	private int dt = -1;
-	private float paddingx;
-	private float paddingy;
-	private float notePosFactor;
-	private bool blackAbove;
-	private float pixelsPerSecond;
-	private float scwidth;
-	private float sepwdth;
+    private readonly float pianoHeight = .151f;
+    private int dt = -1;
+    private float paddingx;
+    private float paddingy;
+    private float notePosFactor;
+    private bool blackAbove;
+    private float pixelsPerSecond;
+    private float scwidth;
+    private float sepwdth;
 
     public void Render(MidiFile f, double midiTime, int deltaTimeOnScreen, RenderSettings settings, CommandList CL)
     {
@@ -444,9 +445,9 @@ public class ComputeRender : IRender
         public Vector2 Size;
         public RgbaFloatEva Color;
     }
-    private void AddQuad(CommandList CL, float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4, 
-		RgbaFloatEva color)
-	{
+    private void AddQuad(CommandList CL, float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4,
+        RgbaFloatEva color)
+    {
         quads[quadcount].Position = new Vector2(x1 * outputTexture.Width, y1 * outputTexture.Height);
         quads[quadcount].Size = new Vector2((x2 - x1) * outputTexture.Width, (y3 - y1) * outputTexture.Height);
         quads[quadcount].Color = color;
@@ -455,6 +456,6 @@ public class ComputeRender : IRender
         {
             Flush(CL);
         }
-	}
+    }
 
 }
