@@ -44,4 +44,7 @@
       <None Remove="Resources\**" />
       <EmbeddedResource Include="Resources\**" />
     </ItemGroup>
+    <ItemGroup>
+      <ProjectReference Include="../../LinticsPacker/LinticsPacker/LinticsPacker.csproj" />
+    </ItemGroup>
 </Project>

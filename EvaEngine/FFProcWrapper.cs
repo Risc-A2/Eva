@@ -11,20 +11,20 @@ using std;
 namespace EvaEngine;
 public sealed unsafe class NativeFramePool
 {
-    internal readonly ConcurrentBag<IntPtr> _pool;
+    internal readonly ConcurrentQueue<IntPtr> _pool;
     internal readonly nint _frameSize;
 
     public NativeFramePool(int capacity, nint frameSize)
     {
         _frameSize = frameSize;
-        _pool = new ConcurrentBag<IntPtr>();
+        _pool = new ConcurrentQueue<IntPtr>();
         for (int i = 0; i < capacity; i++)
-            _pool.Add(Marshal.AllocHGlobal(frameSize));
+            _pool.Enqueue(Marshal.AllocHGlobal(frameSize));
     }
 
     public IntPtr Rent()
     {
-        if (_pool.TryTake(out var ptr))
+        if (_pool.TryDequeue(out var ptr))
             return ptr;
         // Si el pool se agota, asignamos uno extra
         return Marshal.AllocHGlobal(_frameSize);
@@ -32,19 +32,19 @@ public sealed unsafe class NativeFramePool
 
     public void Return(IntPtr ptr)
     {
-        _pool.Add(ptr);
+        _pool.Enqueue(ptr);
     }
 
     public void FreeAll()
     {
-        while (_pool.TryTake(out var ptr))
+        while (_pool.TryDequeue(out var ptr))
             Marshal.FreeHGlobal(ptr);
     }
 }
 public sealed class FFProcWrapper : IDisposable
 {
     private readonly Process _process;
-    private readonly ConcurrentBag<FFFrame> frames;
+    private readonly ConcurrentQueue<FFFrame> frames;
     private readonly NativeFramePool _pool;
     private readonly Task _task;
     public bool Encode;
@@ -68,18 +68,26 @@ public sealed class FFProcWrapper : IDisposable
     }
     public void WriteFrame(FFFrame frame)
     {
-        frames.Add(frame);
+        frames.Enqueue(frame);
     }
-    private async unsafe Task FFWrite()
+    private async Task FFWrite()
     {
         while (Encode || !frames.IsEmpty)
         {
-            FFFrame frame = default!;
-            if (!frames.TryTake(out frame!))
-                continue;
-            ReadOnlySpan<byte> view = new(frame._region.ToPointer(), (int)_pool._frameSize);
-            _process.StandardInput.BaseStream.Write(view);
-            _pool.Return(frame._region);
+            if (frames.TryDequeue(out var frame))
+            {
+                var memoryOwner = ArrayPool<byte>.Shared.Rent((int)_pool._frameSize);
+                Marshal.Copy(frame._region, memoryOwner, 0, (int)_pool._frameSize);
+
+                await _process.StandardInput.BaseStream.WriteAsync(memoryOwner, 0,
+                    (int)_pool._frameSize);
+                ArrayPool<byte>.Shared.Return(memoryOwner);
+                _pool.Return(frame._region);
+            }
+            else
+            {
+                await Task.Delay(1); // Evitar CPU spinning
+            }
         }
     }
 
@@ -99,6 +107,13 @@ public sealed class FFProcWrapper : IDisposable
         public IntPtr Map()
         {
             return _region;
+        }
+        public ReadOnlySpan<byte> AsSpan()
+        {
+            unsafe
+            {
+                return new ReadOnlySpan<byte>(_region.ToPointer(), (int)Size);
+            }
         }
         internal FFFrame(IntPtr region, long stride = 0, long rows = 0)
         {

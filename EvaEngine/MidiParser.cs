@@ -295,6 +295,8 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
     }
 
     private bool readDelta = false;
+    // Reads the next MIDI event based on the status byte
+    // This method is an Internal Implementation        
     private void ReadNextEvent_impl(byte status)
     {
         byte point = (byte)(status >> 4);
@@ -310,7 +312,7 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
             case 0x7:
                 reader.Pushback = status;
                 status = previousStatus;
-                ReadNextEvent_impl(status);
+                ReadNextEvent_impl(status); // Worst Case cuz Recursive?
                 break;
             case 0x8:
                 ProcessNoteOff(status);
@@ -382,9 +384,6 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
                 break;
             case 0x8:
             case 0x9:
-                reader.Skip(2);
-                previousStatus = status;
-                break;
             case 0xA:
             case 0xB:
                 reader.Skip(2);
@@ -592,7 +591,7 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
         // TODO release managed resources here
         reader.Dispose();
     }
-    public FastList<MidiNote> Notes;
+    public List<MidiNote> Notes;
 }
 
 public class MidiFile
@@ -736,41 +735,15 @@ public class MidiFile
 
         if (cfg.loadAll)
         {
-            for (; currentSyncTime <= maxWallTime; currentSyncTime++)
-            {
-                for (int j = 0; j < Tracks.Length; j++)
-                {
-                    try
-                    {
-                        var track = Tracks[j];
-                        if (track.endOfTrack)
-                            continue;
-                        track.Step(currentSyncTime);
-                    }
-                    catch
-                    {
-                    }
-                }
-            }
+            ParseUpTo(maxWallTime);
         }
 
         return true;
     }
 
     public double secondsLength;
-    public void ParseUpTo(double start, double end)
+    public void ParseUpTo(double end)
     {
-        if (cfg.loadAll)
-            return;
-        int tracksended = 0;
-        foreach (var t in Tracks)
-        {
-            if (t.endOfTrack)
-                tracksended++;
-        }
-        bool shouldExit = tracksended == Tracks.Length;
-        if (shouldExit)
-            return;
         Task[] ta = new Task[Tracks.Length];
         for (int i = 0; i < Tracks.Length; i++)
         {
@@ -786,11 +759,8 @@ public class MidiFile
         Task.WhenAll(ta).ConfigureAwait(false).GetAwaiter().GetResult();
         foreach (var i in Tracks)
         {
-            foreach (var j in i.Notes)
-            {
-                Notes.Add(j);
-            }
-            i.Notes.Unlink();
+            Notes.AddRange(CollectionsMarshal.AsSpan(i.Notes));
+            i.Notes.Clear();
         }
         currentSyncTime = (long)end;
         SortInPlace(Notes);
@@ -799,7 +769,7 @@ public class MidiFile
     {
         if (list.Count < 10000)
         {
-            list.Sort((a, b) => a.StartTime.CompareTo(b.StartTime));
+            list.Sort(static (a, b) => a.StartTime.CompareTo(b.StartTime));
             return;
         }
         long min = long.MaxValue;
@@ -830,21 +800,20 @@ public class MidiFile
         }
 
         // Reconstruir la lista ordenada - O(n + k)
-        var current = 0;
+        list.Clear();
         for (int i = 0; i < r; i++)
         {
-            if (holes[i] == null)
+            var v = holes[i];
+            if (v == null)
                 continue;
-            if (holes[i].Count > 0)
+            if (v.Count > 0)
             {
-                for (int j = 0; j < holes[i].Count; j++)
-                {
-                    list[current++] = holes[i][j];
-                }
-                holes[i].Clear();
+                list.AddRange(CollectionsMarshal.AsSpan(v));
+                v.Clear();
+                //v.TrimExcess();
             }
         }
-        ArrayPool<List<MidiNote>>.Shared.Return(holes, true);
+        ArrayPool<List<MidiNote>>.Shared.Return(holes, false);
     }
     public void Update(double start)
     {
@@ -883,6 +852,7 @@ public class MidiFile
     }
 
     //public Memory<MidiNote> Notes;
+    //public List<MidiNote> Notes = new();
     public List<MidiNote> Notes = new();
     public FastList<PlaybackEvent> Events = new();
     public FastList<ColorChange> ColorChanges;

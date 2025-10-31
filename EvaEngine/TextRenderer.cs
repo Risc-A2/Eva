@@ -9,16 +9,15 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.PixelFormats;
 using Veldrid;
-using StbTrueTypeSharp;
 using Veldrid.SPIRV;
 using Veldrid.Utilities;
 using SixLabors.ImageSharp.Processing;
-using StbRectPackSharp;
 using System.Text.Json;
 using SixLabors.ImageSharp.Advanced;
 using FreeTypeSharp;
 using std;
 using System.Collections.Concurrent;
+using LinticsPacker;
 
 namespace EvaEngine
 {
@@ -31,6 +30,10 @@ namespace EvaEngine
         public float Advance;
         public float BearingX;
         public float BearingY;
+        public float U0;
+        public float V0;
+        public float U1;
+        public float V1;
     }
     // I hope this code is so ugly that i will never be able to look at it again
     // This is a Text Renderer that uses Veldrid and StbTrueType and StbRectPack to render
@@ -78,7 +81,6 @@ namespace EvaEngine
         // The padding is needed to avoid bleeding between glyphs
         // The padding is needed because the glyphs are packed tightly together
         private const int AtlasSize = 1024;
-        private const int Padding = 2;
         private int _fontSize; // Not used?
         private float _baseline;
         private float newLineHeight;
@@ -96,123 +98,115 @@ namespace EvaEngine
             var err = FT.FT_Load_Glyph(_faceHandle, result, FT_LOAD.FT_LOAD_DEFAULT);
             if (err != FT_Error.FT_Err_Ok)
                 throw new FreeTypeException(err);
-            // Get Glyph Metrics
-            // WHO FUCKING DECIDED TO USE CODEPOINTS INSTEAD OF GLYPHS INDEX?
-            // ALREADY IS GETTTING THIS FUCKING GLYPH INDEX AND THEN GETTING THE CODEPOINT
-            // WHY NOT JUST USE THE GLYPH INDEX INSTEAD OF THE CODEPOINT?
-            //int glyphIndex = StbTrueType.stbtt_FindGlyphIndex(font, c);
-            //int codepoint = c;
+
             var glyph = Marshal.PtrToStructure<FT_GlyphSlotRec_>((IntPtr)_faceHandle->glyph);
-            int advance, bearingX;
-            int x0, y0, x1, y1;
-            advance = (int)glyph.advance.x >> 6;
-            x0 = (int)glyph.metrics.horiBearingX >> 6;
-            y0 = -(int)glyph.metrics.horiBearingY >> 6;
-            x1 = x0 + ((int)glyph.metrics.width >> 6);
-            y1 = y0 + ((int)glyph.metrics.height >> 6);
-            //StbTrueType.stbtt_GetGlyphHMetrics(font, glyphIndex, &advance, &bearingX);
-            //StbTrueType.stbtt_GetGlyphHMetrics(font, glyphIndex, &advance, &bearingX);
 
-            //StbTrueType.stbtt_GetGlyphBitmapBoxSubpixel(font, glyphIndex, scale, scale, 0, 0, &x0, &y0, &x1, &y1);
-            //StbTrueType.stbtt_GetGlyphBitmapBox(font, glyphIndex, scale, scale, &x0, &y0, &x1, &y1);
-
+            int advance = (int)glyph.advance.x >> 6;
             int width = (int)(glyph.metrics.width >> 6);
             int height = (int)(glyph.metrics.height >> 6);
 
-            // Rasterize Glyph
-            // This is an ugly hack to avoid using a byte[] and then converting it to a byte*
-            // This is because the stb_truetype library uses a byte* to store the bitmap
-            // and we need to allocate memory for it
-            // The memory is allocated using NativeMemory.Alloc and then freed using NativeMemory.Free
-            // This is a bit of a hack, but it works and its fast
-            // We could have used byte[] and then pinned it, but that would have been slower
-            // and we dont want that and also using fixed makes it uglier
-            // and byte[] is not a good option because when will the garbage collector run?
-            // So we use NativeMemory.Alloc to allocate memory for the bitmap
-            // and then we free it using NativeMemory.Free
-            // This is a bit of a hack, but it works and its fast
-            // Also, we use a byte* to avoid boxing and unboxing
-            //byte[] bitmap = new byte[width * height];
-            //fixed (byte* b = bitmap)
-            FT.FT_Render_Glyph(_faceHandle->glyph, FT_Render_Mode_.FT_RENDER_MODE_LCD);
+            // Insertar en el packer con padding
+            packer.Insert(width + 2, height + 2, out var rect, out var solved, true);
+            if (!solved)
+            {
+                throw new InvalidOperationException("No se pudo insertar el glifo en el atlas");
+            }
+
+            int xO = rect.X + 1; // +1 para padding
+            int yO = rect.Y + 1; // +1 para padding
+
+            // Renderizar el glifo
+            FT.FT_Render_Glyph(_faceHandle->glyph, FT_Render_Mode_.FT_RENDER_MODE_NORMAL);
             glyph = Marshal.PtrToStructure<FT_GlyphSlotRec_>((IntPtr)_faceHandle->glyph);
             var ftbmp = glyph.bitmap;
-            int a = 1;
-            if (ftbmp.pixel_mode == FT_Pixel_Mode_.FT_PIXEL_MODE_LCD)
-                a = 3;
 
-            byte* bitmap = (byte*)NativeMemory.Alloc((nuint)(ftbmp.pitch * ftbmp.rows));
-            var bptr = bitmap;
-            int stride = ftbmp.pitch;
-            ReadOnlySpan<byte> bytes = new(bptr, (int)(ftbmp.pitch * ftbmp.rows));
-            ReadOnlySpan<byte> bytes2 = new(ftbmp.buffer, (int)(ftbmp.pitch * ftbmp.rows));
-            for (int y = 0; y < height; ++y)
+            byte* bitmap = null;
+            try
             {
-                var pos = (y * ftbmp.pitch);
+                // Asignar memoria para el bitmap
+                bitmap = (byte*)NativeMemory.Alloc((nuint)(ftbmp.pitch * ftbmp.rows));
 
-                byte* dst = bptr + pos;
-                byte* src = ftbmp.buffer + y * ftbmp.pitch;
-                C.memcpy(dst, src, ftbmp.pitch);
-            }
-            //StbTrueType.stbtt_MakeGlyphBitmapSubpixel(font, bitmap, width, height, width, scale, scale, 0, 0, glyphIndex);
-            //StbTrueType.stbtt_MakeGlyphBitmap(font, b, width, height, width, scale, scale, glyphIndex);
-            var rect = packer.PackRect(width + (Padding * 2), height + (Padding * 2), null);
-
-            // add Glyph to atlas
-            int xO = rect.X + (Padding);
-            int yO = rect.Y + Padding;
-            int s = width * a;
-            // Use Readonlyspan to copy the data into the bitmap
-            // The Bitmap is gb is a byte* so we need to convert it to a span
-            // Who the hell designed this Code to save memory?
-            var span = new ReadOnlySpan<byte>(bitmap, (int)(ftbmp.pitch * ftbmp.rows));
-            for (int i = 0; i < ftbmp.rows; i++)
-            {
-                //Slice my ram
-                var sourceRow = span.Slice(i * ftbmp.pitch, ftbmp.pitch);
-                var targetRow = image.DangerousGetPixelRowMemory(i + yO).Slice(xO, width);
-
-                for (int j = 0; j < width; j++)
+                // Copiar datos del bitmap FreeType
+                for (int y = 0; y < ftbmp.rows; y++)
                 {
-                    // mmm, sweet L8's
-                    if (ftbmp.pixel_mode == FT_Pixel_Mode_.FT_PIXEL_MODE_LCD)
-                    {
-                        int D = 3 * j;
+                    byte* dst = bitmap + (y * ftbmp.pitch);
+                    byte* src = ftbmp.buffer + (y * ftbmp.pitch);
+                    C.memcpy(dst, src, ftbmp.pitch);
+                }
 
-                        targetRow.Span[j] = new L8((byte)(sourceRow[D] * 0.299f + sourceRow[D + 1] * 0.587f + sourceRow[D + 2] * 0.114f));
-                    }
-                    else
+                var span = new ReadOnlySpan<byte>(bitmap, (int)(ftbmp.pitch * ftbmp.rows));
+
+                if (!rect.Rotated)
+                {
+                    // Sin rotación - copia normal
+                    for (int y = 0; y < height; y++)
                     {
-                        targetRow.Span[j] = new L8(sourceRow[j]);
+                        if (y + yO >= AtlasSize) break;
+
+                        var sourceRow = span.Slice(y * ftbmp.pitch, Math.Min(ftbmp.pitch, width));
+                        var targetRow = image.DangerousGetPixelRowMemory(y + yO).Slice(xO, width);
+
+                        for (int x = 0; x < width; x++)
+                        {
+                            if (x + xO >= AtlasSize) break;
+                            targetRow.Span[x] = new L8(sourceRow[x]);
+                        }
+                    }
+                }
+                else
+                {
+                    // CON ROTACIÓN CORREGIDA - 90 grados en sentido horario
+                    // Cuando está rotado, el ancho y alto se intercambian
+                    for (int srcY = 0; srcY < height; srcY++)
+                    {
+                        if (srcY >= width) break; // Por seguridad
+
+                        var sourceRow = span.Slice(srcY * ftbmp.pitch, Math.Min(ftbmp.pitch, width));
+
+                        for (int srcX = 0; srcX < width; srcX++)
+                        {
+                            if (srcX >= height) break; // Por seguridad
+
+                            // Fórmula de rotación 90° sentido horario:
+                            // source[srcX, srcY] -> target[srcY, height - 1 - srcX]
+                            int targetX = xO + srcY;  // yO se convierte en coordenada X
+                            int targetY = yO + (height - 1 - srcX); // xO se convierte en coordenada Y
+
+                            if (targetX < AtlasSize && targetY < AtlasSize)
+                            {
+                                var targetRow = image.DangerousGetPixelRowMemory(targetY).Slice(targetX, 1);
+                                targetRow.Span[0] = new L8(sourceRow[srcX]);
+                            }
+                        }
                     }
                 }
             }
-            // Free the memory allocated by RasterizeGlyph
-            // This is important to avoid memory leaks
-            // NativeMemory.Free(gb) is used to free the memory allocated by RasterizeGlyph
-            // This is a bit of a hack because it could have been made from RasterizeGlyph, 
-            // but it works and im lazy to fix it right now
-            NativeMemory.Free(bitmap);
+            finally
+            {
+                if (bitmap != null)
+                    NativeMemory.Free(bitmap);
+            }
 
-            // Store the glyph information
-            // The glyph information is used to draw the glyph later
-            // The glyph information is stored in a dictionary with the character as the key
+            // Store the glyph information - CORREGIDO para rotación
             _charInfo[c] = new GlyphInfo
             {
-                X = xO,
-                Y = yO,
-                Width = width,
-                Height = height,
+                X = rect.X,
+                Y = rect.Y,
+                Width = rect.Rotated ? height : width,  // Intercambiar cuando está rotado
+                Height = rect.Rotated ? width : height, // Intercambiar cuando está rotado
                 Advance = advance,
-                BearingX = glyph.metrics.horiBearingX >> 6,
-                BearingY = glyph.metrics.horiBearingY >> 6
+                BearingX = (glyph.metrics.horiBearingX >> 6),
+                BearingY = (glyph.metrics.horiBearingY >> 6),
+                U0 = rect.U0,
+                V0 = rect.V0,
+                U1 = rect.U1,
+                V1 = rect.V1
             };
         }
 
         private int ascent, descent, lineGap;
-        private StbTrueType.stbtt_fontinfo font;
         private Image<L8> image;
-        private Packer packer = new Packer(AtlasSize, AtlasSize);
+        private Packer packer = new Packer(AtlasSize, AtlasSize, PackAlgorithm.MaxRects);
         public Texture texture
         {
             get
@@ -242,6 +236,7 @@ namespace EvaEngine
                 _libraryHandle = libraryRef;
             }
             _memoryHandle = GCHandle.Alloc(data, GCHandleType.Pinned);
+
 
             FT_FaceRec_* faceRef;
             err = FT.FT_New_Memory_Face(_libraryHandle, (byte*)_memoryHandle.AddrOfPinnedObject(), (IntPtr)data.Length, IntPtr.Zero, &faceRef);
@@ -391,10 +386,10 @@ namespace EvaEngine
                 //float y = pixelPos.Y;
                 float advance = info.Advance * scale;
 
-                float u0 = info.X / (float)AtlasSize;
-                float v0 = info.Y / (float)AtlasSize;
-                float u1 = (info.X + info.Width) / (float)AtlasSize;
-                float v1 = (info.Y + info.Height) / (float)AtlasSize;
+                float u0 = info.U0;
+                float v0 = info.V0;
+                float u1 = info.U1;
+                float v1 = info.V1;
 
                 Vector2 posNorm = new Vector2(
                     (x / screenWidth),

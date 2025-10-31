@@ -8,21 +8,21 @@ using System.Threading.Tasks;
 namespace EvaEngine;
 public class FastList<T> : IEnumerable<T>
 {
-    private class ListItem
+    internal class ListItem
     {
         public ListItem Next;
         public T item;
     }
 
-    private ListItem root = new ListItem();
-    private ListItem last = null;
+    internal ListItem Root = new ListItem();
+    internal ListItem Last = null!;
 
     public T First
     {
         get
         {
-            if (root.Next != null) return root.Next.item;
-            else return default(T);
+            if (Root.Next != null) return Root.Next.item;
+            else return default(T)!;
         }
     }
     public class Iterator
@@ -45,7 +45,7 @@ public class FastList<T> : IEnumerable<T>
             if (ll == null)
             {
                 v = default(T);
-                _ilist.last = curr;
+                _ilist.Last = curr;
                 return false;
             }
 
@@ -59,7 +59,7 @@ public class FastList<T> : IEnumerable<T>
 
         public void Remove()
         {
-            if (_ilist.last.Equals(curr)) _ilist.last = prev;
+            if (_ilist.Last.Equals(curr)) _ilist.Last = prev;
             prev.Next = curr.Next;
         }
 
@@ -71,7 +71,7 @@ public class FastList<T> : IEnumerable<T>
                 Next = curr
             };
             if (prev == null)
-                _ilist.root.Next = i;
+                _ilist.Root.Next = i;
             else
                 prev.Next = i;
             //if (curr.Equals(_ilist.last))
@@ -83,7 +83,7 @@ public class FastList<T> : IEnumerable<T>
         public void Reset()
         {
             this.prev = null;
-            this.curr = _ilist.root;
+            this.curr = _ilist.Root;
         }
     }
 
@@ -121,7 +121,7 @@ public class FastList<T> : IEnumerable<T>
 
         public void Reset()
         {
-            this.curr = _ilist.root;
+            this.curr = _ilist.Root;
         }
     }
 
@@ -129,22 +129,22 @@ public class FastList<T> : IEnumerable<T>
     {
         ListItem li = new ListItem();
         li.item = item;
-        if (root.Next != null && last != null)
+        if (Root.Next != null && Last != null)
         {
-            while (last.Next != null) last = last.Next;
-            last.Next = li;
+            while (Last.Next != null) Last = Last.Next;
+            Last.Next = li;
         }
         else
-            root.Next = li;
+            Root.Next = li;
 
-        last = li;
+        Last = li;
 
     }
 
     public T Pop()
     {
-        ListItem el = root.Next;
-        root.Next = el.Next;
+        ListItem el = Root.Next;
+        Root.Next = el.Next;
         return el.item;
     }
 
@@ -153,7 +153,7 @@ public class FastList<T> : IEnumerable<T>
         return new Iterator(this);
     }
 
-    public bool ZeroLen => root.Next == null;
+    public bool ZeroLen => Root.Next == null;
 
     public IEnumerator<T> FastIterate()
     {
@@ -162,15 +162,15 @@ public class FastList<T> : IEnumerable<T>
 
     public void Unlink()
     {
-        root.Next = null;
-        last = null;
+        Root.Next = null;
+        Last = null;
     }
 
     public int Count()
     {
         int cnt = 0;
 
-        ListItem li = root.Next;
+        ListItem li = Root.Next;
         while (li != null)
         {
             cnt++;
@@ -182,7 +182,7 @@ public class FastList<T> : IEnumerable<T>
 
     public bool Any()
     {
-        return root.Next != null;
+        return Root.Next != null;
     }
 
     IEnumerator IEnumerable.GetEnumerator()
