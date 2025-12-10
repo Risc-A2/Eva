@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -32,9 +33,27 @@ public unsafe partial class C
     }
     public static void memset(void* ptr, byte val, nint size)
     {
-        var ap = (byte*)ptr;
-        for (long i = 0; i < size; ++i)
-            *ap++ = val;
+        byte* p = (byte*)ptr;
+
+        // Construir el patrón repetido del byte en un nuint
+        nuint pattern = 0;
+        for (int j = 0; j < sizeof(nuint); j++)
+            pattern |= (nuint)val << (j * 8);
+
+        // 1) Alinear hasta el tamaño de nuint
+        nint i = 0;
+        for (; i < size && ((nuint)p & (nuint)(sizeof(nuint) - 1)) != 0; i++)
+            p[i] = val;
+
+        // 2) Escribir por bloques de nuint
+        nuint* n = (nuint*)(p + i);
+        for (; i + sizeof(nuint) <= size; i += sizeof(nuint))
+            *n++ = pattern;
+
+        // 3) Rellenar últimos bytes
+        byte* tail = (byte*)n;
+        for (; i < size; i++)
+            tail[i - size + i] = val;
     }
     public static void memset(C_MemRegion ptr, byte val, nint size)
     {
@@ -44,8 +63,18 @@ public unsafe partial class C
     {
         var ap = (byte*)a + startSrc;
         var bp = (byte*)b + startDst;
-        for (long i = 0; i < size; ++i)
-            *ap++ = *bp++;
+        var ap2 = (nint*)a + startSrc;
+        var bp2 = (nint*)b + startDst;
+        nint i = 0;
+        for (; i < size; i += nint.Size)
+        {
+            nint s1 = ap2[i];
+            bp2[i] = s1;
+        }
+        for (; i < size; i++)
+        {
+            ap[i] = bp[i];
+        }
     }
 
     public static void memcpy(C_MemRegion a, C_MemRegion b, nint startSrc, nint startDst, nint size)

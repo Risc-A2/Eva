@@ -1,5 +1,7 @@
 ﻿#define NOTES_FASTLIST
 using System.Buffers;
+using System.Collections.Concurrent;
+using System.IO.MemoryMappedFiles;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -13,10 +15,10 @@ public class MidiTempoChange
     public uint Ticks;
     public uint Tempo;
 }
-
-public class MidiNote
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public class MidiNote : IComparable<MidiNote>
 {
-    private byte flags;
+    private byte flags = 0;
     public bool Delete { get => (flags & 1) != 0; set => flags = (byte)((flags & ~1) | (value ? 1 : 0)); }
     public bool hasEnd { get => (flags & 2) != 0; set => flags = (byte)((flags & ~2) | (value ? 2 : 0)); }
     public byte Key = 0;
@@ -27,9 +29,30 @@ public class MidiNote
     //public float Duration = 0; Inecesario uso de RAM
     public byte Channel = 0;
 
-    public void SetDelete(bool val)
+
+    public int CompareTo(MidiNote? other)
     {
-        Delete = val;
+        if (other == null) return 1;
+        return StartTime.CompareTo(other.StartTime);
+    }
+    public static bool operator <(MidiNote left, MidiNote right)
+    {
+        return left.CompareTo(right) < 0;
+    }
+
+    public static bool operator >(MidiNote left, MidiNote right)
+    {
+        return left.CompareTo(right) > 0;
+    }
+
+    public static bool operator <=(MidiNote left, MidiNote right)
+    {
+        return left.CompareTo(right) <= 0;
+    }
+
+    public static bool operator >=(MidiNote left, MidiNote right)
+    {
+        return left.CompareTo(right) >= 0;
     }
 }
 public class ColorChange
@@ -47,16 +70,41 @@ public class NoteColor
     public RgbaFloatEva right;
     public bool isDefault = true;
 }
-
-public struct PlaybackEvent
+public class PlaybackEvent : IComparable<PlaybackEvent>
 {
     public uint pos;
     public int val;
+
+    public int CompareTo(PlaybackEvent? other)
+    {
+        if (other == null) return 1;
+        return pos.CompareTo(other.pos);
+    }
+    public static bool operator <(PlaybackEvent left, PlaybackEvent right)
+    {
+        return left.CompareTo(right) < 0;
+    }
+
+    public static bool operator >(PlaybackEvent left, PlaybackEvent right)
+    {
+        return left.CompareTo(right) > 0;
+    }
+
+    public static bool operator <=(PlaybackEvent left, PlaybackEvent right)
+    {
+        return left.CompareTo(right) <= 0;
+    }
+
+    public static bool operator >=(PlaybackEvent left, PlaybackEvent right)
+    {
+        return left.CompareTo(right) >= 0;
+    }
 }
 
 
-public class MidiTrack(Stream input, long len, long position, MidiFile files) : IDisposable, IAsyncDisposable
+public class MidiTrack(MemoryMappedFile input, long len, long position, MidiFile files) : IDisposable, IAsyncDisposable
 {
+    public List<PlaybackEvent> Events = new();
     private delegate void MidiHandler(byte status);
 
     private readonly MidiHandler[] _handlers = new MidiHandler[16];
@@ -79,8 +127,6 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
         true, // E
         true // F
     };
-    private BufferByteReader _reader;
-    public BufferByteReader reader => _reader;
     public byte MaxNote = 0;
     public long stoppoint;
     public byte MinNote = 255;
@@ -90,6 +136,10 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
         byte byteRead;
 
         // Unroll the loop for up to 4 bytes (common case for MIDI VLQs)
+        // Standard is up to 4 bytes for MIDI VLQs
+        // but in reality is up to 5 or 10 maybe bytes because it gets us 28 bits only
+        // And some MIDIS use more than that for some reason
+        // And we're gonna Unroll
         for (int i = 0; i < 4; i++)
         {
             byteRead = reader.ReadFast();
@@ -205,7 +255,7 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
         }
     }
 
-    private Queue<MidiNote>[] ActiveNotes;
+    private Stack<MidiNote>[] ActiveNotes;
     void ProcessNoteOff(byte status)
     {
         previousStatus = status;
@@ -217,13 +267,13 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
         v ??= new();
         if (v.Count != 0)
         {
-            var n = v.Dequeue();
+            var n = v.Pop();
             n.EndTime = wallTime;
             n.hasEnd = true;
 #if KDMAPI_ENABLED
             if (KDMAPI.KDMAPI_Supported && n.Velocity > 10)
             {
-                files.Events.Add(new()
+                Events.Add(new()
                 {
                     pos = wallTime,
                     val = status | (d1 << 8) | (d2 << 16)
@@ -241,13 +291,13 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
         v ??= new();
         if (v.Count != 0)
         {
-            var n = v.Dequeue();
+            var n = v.Pop();
             n.EndTime = wallTime;
             n.hasEnd = true;
 #if KDMAPI_ENABLED
             if (KDMAPI.KDMAPI_Supported && n.Velocity > 10)
             {
-                files.Events.Add(new()
+                Events.Add(new()
                 {
                     pos = wallTime,
                     val = status | (d1 << 8) | (d2 << 16)
@@ -280,12 +330,12 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
             hasEnd = false,
             Color = NoteColors[channel]
         };
-        v.Enqueue(n);
+        v.Push(n);
         Notes.Add(n);
 #if KDMAPI_ENABLED
         if (KDMAPI.KDMAPI_Supported && d2 > 10)
         {
-            files.Events.Add(new()
+            Events.Add(new()
             {
                 pos = wallTime,
                 val = status | (d1 << 8) | (d2 << 16)
@@ -297,12 +347,25 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
     private bool readDelta = false;
     // Reads the next MIDI event based on the status byte
     // This method is an Internal Implementation        
-    private void ReadNextEvent_impl(byte status)
+    /*private void ReadNextEvent_impl(byte status)
     {
         byte point = (byte)(status >> 4);
+        if (point < 0x8)
+        {
+            // Si no hay status anterior, esto es un error en el stream
+            if (previousStatus == 0)
+                throw new InvalidDataException("Running status without previous status");
+            reader.Pushback = status;
+            status = previousStatus;
+            point = (byte)(status >> 4);
+        }
+        else
+        {
+            previousStatus = status;
+        }
         switch (point)
         {
-            case 0x0:
+            /+*case 0x0:
             case 0x1:
             case 0x2:
             case 0x3:
@@ -313,7 +376,7 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
                 reader.Pushback = status;
                 status = previousStatus;
                 ReadNextEvent_impl(status); // Worst Case cuz Recursive?
-                break;
+                break;*+/
             case 0x8:
                 ProcessNoteOff(status);
                 break;
@@ -330,12 +393,178 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
                 break;
             case 0xE:
             case 0xF:
-                HandleUselessEvent2(status);
+                switch (status & 0x0F)
+                {
+                    case 0x0:
+                    case 0x7:
+                        reader.Skip((int)ReadValue());
+                        break;
+                    case 0x1:
+                        reader.Skip(1);
+                        break;
+                    case 0x3:
+                        reader.Skip(1);
+                        break;
+                    case 0x2:
+                        reader.Skip(2);
+                        break;
+                    case 0xF: // System Reset
+                              // Leer tipo de meta event
+                        byte data1 = reader.Read();
+                        uint data2 = ReadValue();
+                        //reader.Skip(1);
+                        if (data1 == 0x2F)
+                        {
+                            endOfTrack = true;
+                            End();
+                            reader.Skip((int)data2);
+                        }
+                        else
+                            reader.Skip((int)data2);
+                        break;
+                    default:
+                        break;
+                }
+                //HandleUselessEvent2(status);
                 break;
             default:
                 break;
         }
+    }*/
+    private void ReadNextEvent_impl(byte status)
+    {
+        // Resumen: manejar running status, eventos de canal, SysEx y MetaEvents de forma correcta.
+        // status viene ya leido por el caller.
+
+        // Handle running status
+        byte point = (byte)(status >> 4);
+        if (point < 0x8)
+        {
+            if (previousStatus == 0)
+                throw new InvalidDataException("Running status without previous status");
+
+            // pushback the byte we just read so subsequent reads see it as data byte
+            reader.Pushback = status;
+            status = previousStatus;
+            point = (byte)(status >> 4);
+        }
+        else
+        {
+            previousStatus = status;
+        }
+
+        // Canal events (0x8..0xE)
+        if (point >= 0x8 && point <= 0xE)
+        {
+            switch (point)
+            {
+                case 0x8: // Note Off: 2 bytes
+                    ProcessNoteOff(status);
+                    break;
+                case 0x9: // Note On: 2 bytes (velocity 0 -> Note Off)
+                    ProcessNoteOn(status);
+                    break;
+                case 0xA: // Polyphonic Key Pressure: 2 bytes
+                case 0xB: // Control Change: 2 bytes
+                    HandleUselessEvent2(status);
+                    break;
+                case 0xC: // Program Change: 1 byte
+                case 0xD: // Channel Pressure: 1 byte
+                    HandleUselessEvent1(status);
+                    break;
+                case 0xE: // Pitch Bend: 2 bytes
+                    HandleUselessEvent2(status);
+                    break;
+                default:
+                    break;
+            }
+            return;
+        }
+
+        // System Common / SysEx / Meta events (0xF)
+        if ((status & 0xF0) == 0xF0)
+        {
+            // Distinguish SysEx (F0, F7) and Meta (FF)
+            if (status == 0xFF)
+            {
+                // Meta Event: next byte = type, then length as VLQ, then payload
+                byte metaType = reader.Read(); // data1
+                uint length = ReadValue();     // VLQ length
+                if (metaType == 0x2F) // End of track
+                {
+                    // Typically length == 0
+                    endOfTrack = true;
+                    End();
+                    // consume payload (if any)
+                    reader.Skip((int)length);
+                }
+                else if (metaType == 0x51) // Tempo (3 bytes)
+                {
+                    /*if (length >= 3)
+                    {
+                        uint btempo = 0;
+                        for (int i = 0; i < 3; i++)
+                            btempo = (btempo << 8) | reader.ReadFast();
+                        TempoChanges.Add(new MidiTempoChange { Tempo = btempo, Ticks = wallTime });
+                        // if payload longer than 3, skip remaining
+                        if (length > 3)
+                            reader.Skip((int)(length - 3));
+                    }
+                    else
+                    {*/
+                    // read whatever is there
+                    reader.Skip((int)length);
+                    //}
+                }
+                else
+                {
+                    // Unknown meta - skip its payload
+                    reader.Skip((int)length);
+                }
+            }
+            else
+            {
+                // SysEx or System Common messages
+                // F0 and F7 are SysEx start/continue with a VLQ length
+                if (status == 0xF0 || status == 0xF7)
+                {
+                    uint length = ReadValue();
+                    reader.Skip((int)length);
+                }
+                else
+                {
+                    // System common messages (F1-F6) and real-time (F8-FF but FF handled above)
+                    // Handle known lengths:
+                    switch (status)
+                    {
+                        case 0xF1: // MTC Quarter Frame: 1 data byte
+                        case 0xF3: // Song Select: 1 data byte
+                            reader.Skip(1);
+                            break;
+                        case 0xF2: // Song Position Pointer: 2 data bytes
+                            reader.Skip(2);
+                            break;
+                        case 0xF6: // Tune Request: 0 data bytes - nothing to do
+                            break;
+                        case 0xF8: // Timing Clock etc. (real-time messages) - 0 data bytes
+                        case 0xFA:
+                        case 0xFB:
+                        case 0xFC:
+                        case 0xFE:
+                            // These have no data bytes
+                            break;
+                        default:
+                            // F4, F5 are undefined in many specs; safest: do nothing or attempt to skip 0
+                            break;
+                    }
+                }
+            }
+            return;
+        }
+
+        // If we reach here, it's unexpected — be conservative: no-op
     }
+
 
     public void ReadNextEvent()
     {/*
@@ -346,7 +575,7 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
         wallTime += ReadValue();
         readDelta = false;
         byte status = reader.ReadFast();
-        if (status == 255)
+        /*if (status == 255)
         {
             previousStatus = status;
             var data1 = reader.Read();
@@ -360,17 +589,30 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
                 reader.Skip((int)data2);
         }
         else
-        {
-            ReadNextEvent_impl(status);
-            //_handlers[point](status);
-        }
+        {*/
+        ReadNextEvent_impl(status);
+        //_handlers[point](status);
+        //}
     }
     private void ReadNextEventFast_impl(byte status)
     {
-        byte point = (byte)(status >> 4);
+        /*byte point = (byte)(status >> 4);
+        if (point < 0x8)
+        {
+            // Si no hay status anterior, esto es un error en el stream
+            if (previousStatus == 0)
+                throw new InvalidDataException("Running status without previous status");
+            reader.Pushback = status;
+            status = previousStatus;
+            point = (byte)(status >> 4);
+        }
+        else
+        {
+            previousStatus = status;
+        }
         switch (point)
         {
-            case 0x0:
+            /+*case 0x0:
             case 0x1:
             case 0x2:
             case 0x3:
@@ -381,26 +623,203 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
                 reader.Pushback = status;
                 status = previousStatus;
                 ReadNextEventFast_impl(status);
-                break;
+                break;*+/
             case 0x8:
             case 0x9:
             case 0xA:
             case 0xB:
                 reader.Skip(2);
-                previousStatus = status;
                 break;
             case 0xC:
             case 0xD:
                 reader.Skip(1);
-                previousStatus = status;
                 break;
             case 0xE:
             case 0xF:
-                reader.Skip(2);
-                previousStatus = status;
+                switch (status & 0x0F)
+                {
+                    case 0x0:
+                    case 0x7:
+                        reader.Skip((int)ReadValue());
+                        break;
+                    case 0x1:
+                        reader.Skip(1);
+                        break;
+                    case 0x3:
+                        reader.Skip(1);
+                        break;
+                    case 0x2:
+                        reader.Skip(2);
+                        break;
+                    case 0xF: // System Reset
+                              // Leer tipo de meta event
+                        byte data1 = reader.Read();
+                        uint data2 = ReadValue();
+                        //reader.Skip(1);
+                        if (data1 == 0x51)
+                        {
+                            uint btempo = 0;
+                            for (int i = 0; i != 3; i++)
+                                btempo = (btempo << 8) | reader.ReadFast();
+                            TempoChanges.Add(new()
+                            {
+                                Tempo = btempo,
+                                Ticks = wallTime
+                            });
+                        }
+                        else if (data1 == 0x2F)
+                        {
+                            endOfTrack = true;
+                            reader.Skip((int)data2);
+                        }
+                        else
+                        {
+                            reader.Skip((int)data2);
+                        }
+
+                        // Leer longitud variable (MIDI VLQ)
+                        //reader.Skip((int)ReadValue());
+                        break;
+                    default:
+                        break;
+                }
+                //reader.Skip(2);
                 break;
             default:
                 break;
+        }*/
+        // Resumen: manejar running status, eventos de canal, SysEx y MetaEvents de forma correcta.
+        // status viene ya leido por el caller.
+
+        // Handle running status
+        byte point = (byte)(status >> 4);
+        if (point < 0x8)
+        {
+            if (previousStatus == 0)
+                throw new InvalidDataException("Running status without previous status");
+
+            // pushback the byte we just read so subsequent reads see it as data byte
+            reader.Pushback = status;
+            status = previousStatus;
+            point = (byte)(status >> 4);
+        }
+        else
+        {
+            previousStatus = status;
+        }
+
+        // Canal events (0x8..0xE)
+        if (point >= 0x8 && point <= 0xE)
+        {
+            switch (point)
+            {
+                case 0x8: // Note Off: 2 bytes
+                    reader.Skip(2);
+                    //ProcessNoteOff(status);
+                    break;
+                case 0x9: // Note On: 2 bytes (velocity 0 -> Note Off)
+                    reader.Skip(2);
+                    //ProcessNoteOn(status);
+                    break;
+                case 0xA: // Polyphonic Key Pressure: 2 bytes
+                case 0xB: // Control Change: 2 bytes
+                    reader.Skip(2);
+                    //HandleUselessEvent2(status);
+                    break;
+                case 0xC: // Program Change: 1 byte
+                case 0xD: // Channel Pressure: 1 byte
+                    reader.Skip(1);
+                    //HandleUselessEvent1(status);
+                    break;
+                case 0xE: // Pitch Bend: 2 bytes
+                    reader.Skip(2);
+                    //HandleUselessEvent2(status);
+                    break;
+                default:
+                    break;
+            }
+            return;
+        }
+
+        // System Common / SysEx / Meta events (0xF)
+        if ((status & 0xF0) == 0xF0)
+        {
+            // Distinguish SysEx (F0, F7) and Meta (FF)
+            if (status == 0xFF)
+            {
+                // Meta Event: next byte = type, then length as VLQ, then payload
+                byte metaType = reader.Read(); // data1
+                uint length = ReadValue();     // VLQ length
+                if (metaType == 0x2F) // End of track
+                {
+                    // Typically length == 0
+                    endOfTrack = true;
+                    //End();
+                    // consume payload (if any)
+                    reader.Skip((int)length);
+                }
+                else if (metaType == 0x51) // Tempo (3 bytes)
+                {
+                    if (length >= 3)
+                    {
+                        uint btempo = 0;
+                        for (int i = 0; i < 3; i++)
+                            btempo = (btempo << 8) | reader.ReadFast();
+                        TempoChanges.Add(new MidiTempoChange { Tempo = btempo, Ticks = wallTime });
+                        // if payload longer than 3, skip remaining
+                        if (length > 3)
+                            reader.Skip((int)(length - 3));
+                    }
+                    else
+                    {
+                        // read whatever is there
+                        reader.Skip((int)length);
+                    }
+                }
+                else
+                {
+                    // Unknown meta - skip its payload
+                    reader.Skip((int)length);
+                }
+            }
+            else
+            {
+                // SysEx or System Common messages
+                // F0 and F7 are SysEx start/continue with a VLQ length
+                if (status == 0xF0 || status == 0xF7)
+                {
+                    uint length = ReadValue();
+                    reader.Skip((int)length);
+                }
+                else
+                {
+                    // System common messages (F1-F6) and real-time (F8-FF but FF handled above)
+                    // Handle known lengths:
+                    switch (status)
+                    {
+                        case 0xF1: // MTC Quarter Frame: 1 data byte
+                        case 0xF3: // Song Select: 1 data byte
+                            reader.Skip(1);
+                            break;
+                        case 0xF2: // Song Position Pointer: 2 data bytes
+                            reader.Skip(2);
+                            break;
+                        case 0xF6: // Tune Request: 0 data bytes - nothing to do
+                            break;
+                        case 0xF8: // Timing Clock etc. (real-time messages) - 0 data bytes
+                        case 0xFA:
+                        case 0xFB:
+                        case 0xFC:
+                        case 0xFE:
+                            // These have no data bytes
+                            break;
+                        default:
+                            // F4, F5 are undefined in many specs; safest: do nothing or attempt to skip 0
+                            break;
+                    }
+                }
+            }
+            return;
         }
     }
     public void ReadNextEventFast()
@@ -409,12 +828,12 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
         wallTime += statusTimeDelta;
         byte status = reader.ReadFast();
 
-        if (status == 255)
+        /*if (status == 255)
         {
             previousStatus = status;
             var data1 = reader.Read();
             var data2 = ReadValue();
-            if (data1 == 47)
+            if (data1 == 0x2F)
                 endOfTrack = true;
             else if (data1 == 10)
             {
@@ -441,7 +860,7 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
                     }
                 }
             }
-            else if (data1 == 81)
+            else if (data1 == 0x51)
             {
                 uint btempo = 0;
                 for (int i = 0; i != 3; i++)
@@ -456,11 +875,11 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
                 reader.Skip((int)data2);
         }
         else
-        {
-            ReadNextEventFast_impl(status);
-            //byte point = (byte)(status >> 4);
-            //_Fasthandlers[point](status);
-        }
+        {*/
+        ReadNextEventFast_impl(status);
+        //byte point = (byte)(status >> 4);
+        //_Fasthandlers[point](status);
+        //}
     }
 
     public NoteColor[] NoteColors;
@@ -471,7 +890,7 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
 #if KDMAPI_ENABLED
         if (KDMAPI.KDMAPI_Supported)
         {
-            files.Events.Add(new()
+            Events.Add(new()
             {
                 pos = wallTime,
                 val = status | (d1 << 8)
@@ -487,7 +906,7 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
 #if KDMAPI_ENABLED
         if (KDMAPI.KDMAPI_Supported)
         {
-            files.Events.Add(new()
+            Events.Add(new()
             {
                 pos = wallTime,
                 val = status | (d1 << 8) | (d2 << 16)
@@ -551,15 +970,18 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
         _Fasthandlers[13] = Nothing1;
         _Fasthandlers[14] = Nothing2;
         _Fasthandlers[15] = Nothing2;
-        ActiveNotes = new Queue<MidiNote>[256 * 16];
+        ActiveNotes = new Stack<MidiNote>[256 * 16];
         NoteColors = new NoteColor[16];
         Notes = new();
+        Events = new();
         /*for (int i = 0; i < 256 * 16; i++)
         {
             ActiveNotes[i] =  new();
         }*/
-        _reader = new(input, 10000, position, len);
-        stoppoint = position + len;
+        _reader = new(input, position, len);
+        //MemoryMappedMidiReader
+        //_reader = new(input, 10000, position, len);
+        //stoppoint = position + len;
         while (!endOfTrack)
         {
             try
@@ -576,9 +998,13 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
         maxwallTime = wallTime;
         wallTime = 0;
         endOfTrack = false;
+        previousStatus = 0;
+
         _reader.Reset();
         //_reader = new(input, 512000, position + 8, len);
     }
+    private MemoryMappedMidiReader _reader;
+    public MemoryMappedMidiReader reader => _reader;
 
     public void Dispose()
     {
@@ -596,38 +1022,44 @@ public class MidiTrack(Stream input, long len, long position, MidiFile files) : 
 
 public class MidiFile
 {
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
+
     public MidiFile() { }
 
-    public MidiFile(RenderSettings s, Stream fileName, Image<Rgba32> DefaultPallete)
+    public MidiFile(RenderSettings s, MemoryMappedFile fileName, Image<Rgba32> DefaultPallete)
+#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
     {
         ParseFile(s, fileName, DefaultPallete).ConfigureAwait(false).GetAwaiter().GetResult();
     }
 
     public void Clear()
     {
-        Tracks = null;
+        Tracks = null!;
         Tempo = 0;
         BPM = 0;
         PPQ = 0;
     }
 
-    public async Task<bool> ParseFile(RenderSettings s, Stream fs, Image<Rgba32> DefaultPallete)
+    public async Task<bool> ParseFile(RenderSettings s, MemoryMappedFile fs, Image<Rgba32> DefaultPallete)
     {
-        if (!fs.CanSeek || !fs.CanRead)
+        var se = fs.CreateViewStream(0, 0, MemoryMappedFileAccess.Read);
+        if (!se.CanSeek || !se.CanRead)
         {
             throw new NotSupportedException("Non-Seekable Streams arent supported BUDDY!!!");
         }
+
         cfg = s;
         ColorChanges = new();
         //FileStream fs = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.Read);
 
         // Read MIDI Header
-        uint fileID = fs.BReadUInt32(Endianness.BigEndian);
+        //se.
+        uint fileID = se.BReadUInt32(Endianness.BigEndian);
         //uint fileID = Swap32(reader.ReadUInt32());
-        uint headerLength = fs.BReadUInt32(Endianness.BigEndian);
-        ushort format = fs.BReadUInt16(Endianness.BigEndian);
-        ushort trackChunks = fs.BReadUInt16(Endianness.BigEndian);
-        ushort division = fs.BReadUInt16(Endianness.BigEndian);
+        uint headerLength = se.BReadUInt32(Endianness.BigEndian);
+        ushort format = se.BReadUInt16(Endianness.BigEndian);
+        ushort trackChunks = se.BReadUInt16(Endianness.BigEndian);
+        ushort division = se.BReadUInt16(Endianness.BigEndian);
         if ((division & 32768) != 0) // Si es negativo, es SMPTE
         {
             sbyte fps = (sbyte)((division >> 8) & 255); // FPS (usualmente -24, -25, -29, -30)
@@ -643,19 +1075,19 @@ public class MidiFile
         int tracks = 0;
         List<long> beg = new();
         List<uint> len = new();
-        while (fs.Position < fs.Length)
+        while (se.Position < se.Length)
         {
-            uint trackID = fs.BReadUInt32(Endianness.BigEndian);
+            uint trackID = se.BReadUInt32(Endianness.BigEndian);
             if (trackID != 1297379947) // "MTrk"
             {
                 Console.WriteLine($"Invalid chunk {tracks}, continuing...");
                 continue; // Saltar a la siguiente iteración
             }
 
-            uint trackLength = fs.BReadUInt32(Endianness.BigEndian);
-            beg.Add(fs.Position);
+            uint trackLength = se.BReadUInt32(Endianness.BigEndian);
+            beg.Add(se.Position);
             len.Add(trackLength);
-            fs.Position += trackLength;
+            se.Position += trackLength;
             tracks++;
         }
 
@@ -687,7 +1119,7 @@ public class MidiFile
                 Console.WriteLine($"Track: {tc++:N0}/{Tracks.Length:N0}");
             }
         }*/
-        Parallel.For(0, Tracks.Length, i =>
+        Parallel.For((int)0, Tracks.Length, i =>
         {
             var track = new MidiTrack(fs, len[i], beg[i], this);
             Tracks[i] = track;
@@ -708,6 +1140,7 @@ public class MidiFile
             }
         });
         TotalTicks = maxWallTime;
+        Events = new();
         tempos.Sort((a, b) => a.Ticks.CompareTo(b.Ticks));
         foreach (var t in tempos)
         {
@@ -744,7 +1177,13 @@ public class MidiFile
     public double secondsLength;
     public void ParseUpTo(double end)
     {
-        Task[] ta = new Task[Tracks.Length];
+        Parallel.ForAsync(0, Tracks.Length, (i, sa) =>
+        {
+            if (!Tracks[i].endOfTrack)
+                Tracks[i].ParseUpTo((long)end);
+            return ValueTask.CompletedTask;
+        }).ConfigureAwait(false).GetAwaiter().GetResult();
+        /*Task[] ta = new Task[Tracks.Length];
         for (int i = 0; i < Tracks.Length; i++)
         {
             int i1 = i;
@@ -756,20 +1195,80 @@ public class MidiFile
                 return ValueTask.CompletedTask;
             });
         }
-        Task.WhenAll(ta).ConfigureAwait(false).GetAwaiter().GetResult();
+        Task.WhenAll(ta).ConfigureAwait(false).GetAwaiter().GetResult();*/
+        var TN = Task.Run(() =>
+        {
+            SemaphoreN.Wait();
+            int totalNotes = 0;
+            foreach (var t in Tracks)
+                totalNotes += t.Notes.Count;
+            Notes.EnsureCapacity(Notes.Count + totalNotes);
+            foreach (var i in Tracks)
+            {
+                Notes.AddRange(CollectionsMarshal.AsSpan(i.Notes));
+                i.Notes.Clear();
+            }
+            Redzen.Sorting.TimSort.Sort(CollectionsMarshal.AsSpan(Notes));
+            SemaphoreN.Release();
+        });
+        /*SemaphoreN.Wait();
         foreach (var i in Tracks)
         {
             Notes.AddRange(CollectionsMarshal.AsSpan(i.Notes));
             i.Notes.Clear();
         }
+        Redzen.Sorting.TimSort.Sort(CollectionsMarshal.AsSpan(Notes));
+        SemaphoreN.Release();*/
+        var TE = Task.Run(() =>
+        {
+            //SemaphoreE.Wait();
+            //PriorityQueue<PlaybackEvent, uint> tempQueue = new();
+            int totalCount = 0;
+            foreach (var tr in Tracks)
+                totalCount += tr.Events.Count;
+            List<PlaybackEvent> tempEvents = new(totalCount);
+            foreach (var tr in Tracks)
+            {
+                tempEvents.AddRange(tr.Events);
+                tr.Events.Clear();
+            }
+            tempEvents.Sort(static (a, b) => a.pos.CompareTo(b.pos));
+            //Redzen.Sorting.TimSort.Sort(CollectionsMarshal.AsSpan(tempEvents));
+            SemaphoreE.Wait();
+            foreach (var t in tempEvents)
+            {
+                Events.Enqueue(t);
+            }
+            SemaphoreE.Release();
+            tempEvents.Clear();
+            //tempEvents.TrimExcess();
+            //Events.SortTim();
+            //SemaphoreE.Release();
+        });
+        /*SemaphoreE.Wait();
+        foreach (var i in Tracks)
+        {
+            Events.EnqueueRange(i.Events);
+            i.Events.Clear();
+        }
+        Events.SortTim();
+        SemaphoreE.Release();*/
+        Task.WaitAll(TN, TE);
         currentSyncTime = (long)end;
-        SortInPlace(Notes);
+        //Notes.Sort(static (a, b) => a.StartTime.CompareTo(b.StartTime));
+        //SortInPlace(Notes);
+        //Redzen.Sorting.TimSort.Sort(CollectionsMarshal.AsSpan(Events.));
+        //Events.Sort(static (a, b) => a.pos.CompareTo(b.pos));
     }
+    public SemaphoreSlim SemaphoreN = new SemaphoreSlim(1, 1);
+    public SemaphoreSlim SemaphoreE = new SemaphoreSlim(1, 1);
     private void SortInPlace(List<MidiNote> list)
     {
         if (list.Count < 10000)
         {
-            list.Sort(static (a, b) => a.StartTime.CompareTo(b.StartTime));
+            var span = CollectionsMarshal.AsSpan(list);
+            ExtSorts.QuickSortLR(span, 0, span.Length - 1, static (a, b) => a.StartTime.CompareTo(b.StartTime));
+            //list.Sort(static (a, b) => a.StartTime.CompareTo(b.StartTime));
             return;
         }
         long min = long.MaxValue;
@@ -810,6 +1309,7 @@ public class MidiFile
             {
                 list.AddRange(CollectionsMarshal.AsSpan(v));
                 v.Clear();
+
                 //v.TrimExcess();
             }
         }
@@ -817,6 +1317,7 @@ public class MidiFile
     }
     public void Update(double start)
     {
+        //return;
 #if NOTES_FASTLIST
         try
         {
@@ -854,7 +1355,10 @@ public class MidiFile
     //public Memory<MidiNote> Notes;
     //public List<MidiNote> Notes = new();
     public List<MidiNote> Notes = new();
-    public FastList<PlaybackEvent> Events = new();
+    //public FastCircularQueue<PlaybackEvent> Events = new();
+    //public ConcurrentPriorityQueue<uint, PlaybackEvent> Events = new(PriorityType.Min);
+    public ConcurrentQueue<PlaybackEvent> Events = new();
+    //public List<PlaybackEvent> Events = new();
     public FastList<ColorChange> ColorChanges;
     public FastList<MidiTempoChange> TempoChanges = new();
     public MidiTrack[] Tracks;

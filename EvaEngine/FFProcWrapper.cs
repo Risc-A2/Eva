@@ -9,38 +9,8 @@ using FFmpeg.AutoGen;
 using std;
 
 namespace EvaEngine;
-public sealed unsafe class NativeFramePool
-{
-    internal readonly ConcurrentQueue<IntPtr> _pool;
-    internal readonly nint _frameSize;
 
-    public NativeFramePool(int capacity, nint frameSize)
-    {
-        _frameSize = frameSize;
-        _pool = new ConcurrentQueue<IntPtr>();
-        for (int i = 0; i < capacity; i++)
-            _pool.Enqueue(Marshal.AllocHGlobal(frameSize));
-    }
 
-    public IntPtr Rent()
-    {
-        if (_pool.TryDequeue(out var ptr))
-            return ptr;
-        // Si el pool se agota, asignamos uno extra
-        return Marshal.AllocHGlobal(_frameSize);
-    }
-
-    public void Return(IntPtr ptr)
-    {
-        _pool.Enqueue(ptr);
-    }
-
-    public void FreeAll()
-    {
-        while (_pool.TryDequeue(out var ptr))
-            Marshal.FreeHGlobal(ptr);
-    }
-}
 public sealed class FFProcWrapper : IDisposable
 {
     private readonly Process _process;
@@ -60,12 +30,12 @@ public sealed class FFProcWrapper : IDisposable
         _width = width;
         _height = height;
         _bytesPerPixel = BytesPerPixel;
-        _pool = new(10, (nint)(_width * _height * _bytesPerPixel));
+        //_pool = new(10, (nint)(_width * _height * _bytesPerPixel));
     }
-    public FFFrame AllocateFFFrame()
+    /*public FFFrame AllocateFFFrame()
     {
         return new(_pool.Rent(), _width * _bytesPerPixel, _height);
-    }
+    }*/
     public void WriteFrame(FFFrame frame)
     {
         frames.Enqueue(frame);
@@ -82,7 +52,7 @@ public sealed class FFProcWrapper : IDisposable
                 await _process.StandardInput.BaseStream.WriteAsync(memoryOwner, 0,
                     (int)_pool._frameSize);
                 ArrayPool<byte>.Shared.Return(memoryOwner);
-                _pool.Return(frame._region);
+                //_pool.Return(frame._region);
             }
             else
             {
@@ -97,30 +67,5 @@ public sealed class FFProcWrapper : IDisposable
         Task.WaitAny(_task);
         _pool.FreeAll();
         _process.StandardInput.Close();
-    }
-    public sealed class FFFrame
-    {
-        public readonly long Stride;
-        public readonly long Rows;
-        public readonly long Size;
-        internal IntPtr _region;
-        public IntPtr Map()
-        {
-            return _region;
-        }
-        public ReadOnlySpan<byte> AsSpan()
-        {
-            unsafe
-            {
-                return new ReadOnlySpan<byte>(_region.ToPointer(), (int)Size);
-            }
-        }
-        internal FFFrame(IntPtr region, long stride = 0, long rows = 0)
-        {
-            _region = region;
-            Stride = stride;
-            Rows = rows;
-            Size = stride * rows;
-        }
     }
 }

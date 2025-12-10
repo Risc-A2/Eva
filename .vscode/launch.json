@@ -5,16 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "C#: EvaEngine",
+            "name": "C#: Eva Debug",
             "type": "dotnet",
             "request": "launch",
-            "preLaunchTask": "build",
-            "projectPath": "${workspaceFolder}/EvaEngine/EvaEngine.csproj",
-            "launchConfigurationId": "TargetFramework=;EvaEngine",
-            "args": [
-                "/home/ikki/midis/bad apple v3.mid"
-            ],
-            "console": "internalConsole",
-        }
+            "projectPath": "${workspaceFolder}/EvaEngine/EvaEngine.csproj"
+        },
+        {
+            "name": ".NET Core Attach",
+            "type": "coreclr",
+            "request": "attach"
+        },
     ]
 }

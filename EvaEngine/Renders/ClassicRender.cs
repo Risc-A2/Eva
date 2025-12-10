@@ -125,7 +125,7 @@ public class ClassicRender : IRender
 
     public static void BlendColorSIMD(ref RgbaFloatEva orig, RgbaFloatEva src)
     {
-        var srcVec = new Vector4(src.R, src.G, src.B, src.A);
+        /*var srcVec = new Vector4(src.R, src.G, src.B, src.A);
         var dstVec = new Vector4(orig.R, orig.G, orig.B, orig.A);
 
         var a = srcVec.W;
@@ -140,7 +140,23 @@ public class ClassicRender : IRender
         orig.R = outRGB.X;
         orig.G = outRGB.Y;
         orig.B = outRGB.Z;
-        orig.A = 1f; // forzado
+        orig.A = 1f; // forzado*/
+        // Cargar los píxeles como vectores
+        var srcVec = Vector128.Create(src.R, src.G, src.B, src.A);
+        var dstVec = Vector128.Create(orig.R, orig.G, orig.B, orig.A);
+
+        // Crear vector alpha: [a, a, a, a]
+        var alpha = Vector128.Create(src.A);
+        var oneMinusAlpha = Vector128.Create(1f - src.A);
+
+        // src * alpha + dest * (1 - alpha)
+        var result = srcVec * alpha + dstVec * oneMinusAlpha;
+
+        // Guardar resultado
+        orig.R = result.GetElement(0);
+        orig.G = result.GetElement(1);
+        orig.B = result.GetElement(2);
+        orig.A = 1f;
     }
     private Vector2 NoteShadow = new Vector2(0, 0.2f);
     private Vector2 NoteGradient0 = new Vector2(0, 0.5f);
@@ -196,16 +212,16 @@ public class ClassicRender : IRender
         {
             ref var origcoll = ref keyColors[k * 2];
             ref var origcolr = ref keyColors[k * 2 + 1];
-            if (!blackKeys[k])
+            /*if (!blackKeys[k])
             {
                 BlendColorSIMD(ref origcoll, coll);
                 BlendColorSIMD(ref origcolr, colr);
             }
             else
-            {
-                origcoll = coll;
-                origcolr = colr;
-            }
+            {*/
+            origcoll = coll;
+            origcolr = colr;
+            //}
             keyPressed[k] = true;
         }
         //float pixels = (y1 - y2) * settings.Height;

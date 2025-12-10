@@ -281,7 +281,7 @@ new RasterizerStateDescription(cullMode: FaceCullMode.None,
         DrawingInfo.notes++;
 
 
-        AddQuad(CL, x2, y2, x2, y1, x1, y1, x1, y2, coll, 6);
+        AddQuad(CL, x2, y2, x2, y1, x1, y1, x1, y2, coll, 1);
 
         quadcount++;/*
         //float pixels = (y1 - y2) * settings.Height;
@@ -326,6 +326,7 @@ new RasterizerStateDescription(cullMode: FaceCullMode.None,
         quadcount = 0;
         CL.SetPipeline(pipeline);
         CL.SetGraphicsResourceSet(0, resourceSet);
+        CL.SetFullScissorRect(0);
         float r, g, b, a, r2, g2, b2, a2, r3, g3, b3, a3;
         float x1;
         float x2;

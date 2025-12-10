@@ -87,6 +87,7 @@ namespace EvaEngine
         // The padding is needed to avoid bleeding between glyphs
         // The padding is needed because the glyphs are packed tightly together
         private const int AtlasSize = 1024;
+        private const float ResFactor = 2.0f;
         private readonly int _fontSize; // Not used?
         private readonly float _baseline;
         private readonly float newLineHeight;
@@ -137,7 +138,8 @@ namespace EvaEngine
                 {
                     byte* dst = bitmap + (y * ftbmp.pitch);
                     byte* src = ftbmp.buffer + (y * ftbmp.pitch);
-                    C.memcpy(dst, src, ftbmp.pitch);
+                    Buffer.MemoryCopy(src,dst,ftbmp.pitch,ftbmp.pitch);
+                    //C.memcpy(dst, src, ftbmp.pitch);
                 }
 
                 var span = new ReadOnlySpan<byte>(bitmap, (int)(ftbmp.pitch * ftbmp.rows));
@@ -430,8 +432,6 @@ namespace EvaEngine
             var l = _vertexBuffer.SizeInBytes / Vertex2D.SizeInBytes;
             if (span.Length >= l)
             {
-                // Some growth factor to avoid resizing too often
-                int size = (int)(span.Length * 1.5);
                 // Dispose the old buffer and create a new one with the new size
                 // and also update the length
                 _vertexBuffer.Dispose();
