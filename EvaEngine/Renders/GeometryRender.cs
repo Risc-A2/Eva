@@ -250,54 +250,54 @@ new RasterizerStateDescription(cullMode: FaceCullMode.None,
         //y2 = Math.Clamp(y2, pianoHeight, 1);
         if (y2 < pianoHeight)
             y2 = pianoHeight;
+        /*
+                var cc = n.Color;
+                var coll = cc.left;
+                var colr = cc.right;
+                if (n.StartTime < d)
+                //if (false)
+                {
+                    ref var origcoll = ref keyColors[k * 2];
+                    ref var origcolr = ref keyColors[k * 2 + 1];
+                    if (!blackKeys[k])
+                    {
+                        BlendColorSIMD(ref origcoll, coll);
+                        BlendColorSIMD(ref origcolr, colr);
+                    }
+                    else
+                    {
+                        origcoll = coll;
+                        origcolr = colr;
+                    }
+                    keyPressed[k] = true;
+                }
+                //float pixels = (y1 - y2) * settings.Height;
+                //float minNoteHeight = 0.001f * (1f / dt); // Scale threshold with deltaTimeOnScreen
+                if (y1 - y2 < (paddingy))
+                {
+                    return; // Skip small notes
+                }
 
-        var cc = n.Color;
-        var coll = cc.left;
-        var colr = cc.right;
-        if (n.StartTime < d)
-        //if (false)
-        {
-            ref var origcoll = ref keyColors[k * 2];
-            ref var origcolr = ref keyColors[k * 2 + 1];
-            if (!blackKeys[k])
-            {
-                BlendColorSIMD(ref origcoll, coll);
-                BlendColorSIMD(ref origcolr, colr);
-            }
-            else
-            {
-                origcoll = coll;
-                origcolr = colr;
-            }
-            keyPressed[k] = true;
-        }
-        //float pixels = (y1 - y2) * settings.Height;
-        //float minNoteHeight = 0.001f * (1f / dt); // Scale threshold with deltaTimeOnScreen
-        if (y1 - y2 < (paddingy))
-        {
-            return; // Skip small notes
-        }
-
-        DrawingInfo.notes++;
+                DrawingInfo.notes++;
 
 
-        AddQuad(CL, x2, y2, x2, y1, x1, y1, x1, y2, coll, 1);
+                AddQuad(CL, x2, y2, x2, y1, x1, y1, x1, y2, coll, 1);
 
-        quadcount++;/*
-        //float pixels = (y1 - y2) * settings.Height;
-        if (y1 - y2 > paddingy * 2)
-        //if (pixels > 15f)
-        //if (false)
-        {
-            //x1 += paddingx;
-            x2 -= paddingx;
-            y1 -= paddingy;
-            y2 += paddingy;
+                quadcount++;/*
+                //float pixels = (y1 - y2) * settings.Height;
+                if (y1 - y2 > paddingy * 2)
+                //if (pixels > 15f)
+                //if (false)
+                {
+                    //x1 += paddingx;
+                    x2 -= paddingx;
+                    y1 -= paddingy;
+                    y2 += paddingy;
 
-            AddQuad(CL, x2, y2, x2, y1, x1 + paddingx, y1, x1 + paddingx, y2, coll);
+                    AddQuad(CL, x2, y2, x2, y1, x1 + paddingx, y1, x1 + paddingx, y2, coll);
 
-            quadcount++;
-        }*/
+                    quadcount++;
+                }*/
     }
 
     public void Render(MidiFile f, double midiTime, int deltaTimeOnScreen, RenderSettings settings, CommandList CL)

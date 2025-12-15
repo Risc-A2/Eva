@@ -1,4 +1,5 @@
 //#define VERTEX_USE_INDEX_BUFFER
+
 using System;
 using System.Diagnostics;
 using System.Numerics;
@@ -35,6 +36,7 @@ public class ClassicRender : IRender
             Attrib = new Vector2();
         }
     }
+
     private readonly FastList<IDisposable> disposeGroup = new();
     private readonly Pipeline pipe;
 #if VERTEX_USE_INDEX_BUFFER
@@ -83,6 +85,7 @@ public class ClassicRender : IRender
         if (quadBufferPos < quadBufferLength && check) return;
         if (quadBufferPos == 0) return;
         int verticesPerQuad;
+
 #if VERTEX_USE_INDEX_BUFFER
 		verticesPerQuad = 4;
 #else
@@ -91,9 +94,10 @@ public class ClassicRender : IRender
 
         var buffer = VerticesBuffer[_currentBufferIndex];
         /*var map = GD.Map(buffer, MapMode.Write);
-		Span<Vertex> vert = new((void*)map.Data, pos);
-		Vertices.AsSpan(0, pos).CopyTo(vert);
-		GD.Unmap(buffer);*/
+        Span<Vertex> vert = new((void*)map.Data, pos);
+        Vertices.AsSpan(0, pos).CopyTo(vert);
+        GD.Unmap(buffer);*/
+
         CL.UpdateBuffer(buffer, 0, ref Vertices[0], (uint)(pos * Vertex.SizeInBytes));
         CL.SetVertexBuffer(0, buffer);
         //CL.UpdateBuffer(buffer, 0, _pinnedPtr, (uint)(quadBufferPos * verticesPerQuad * Vertex.SizeInBytes));
@@ -112,6 +116,7 @@ public class ClassicRender : IRender
         DrawingInfo.flushCount++;
         _currentBufferIndex = (_currentBufferIndex + 1) % VerticesBuffer.Length; // Rota entre 0, 1, 2
     }
+
     bool isBlackNote(int n)
     {
         n = n % 12;
@@ -142,6 +147,7 @@ public class ClassicRender : IRender
         orig.B = outRGB.Z;
         orig.A = 1f; // forzado*/
         // Cargar los píxeles como vectores
+
         var srcVec = Vector128.Create(src.R, src.G, src.B, src.A);
         var dstVec = Vector128.Create(orig.R, orig.G, orig.B, orig.A);
 
@@ -158,6 +164,7 @@ public class ClassicRender : IRender
         orig.B = result.GetElement(2);
         orig.A = 1f;
     }
+
     private Vector2 NoteShadow = new Vector2(0, 0.2f);
     private Vector2 NoteGradient0 = new Vector2(0, 0.5f);
     private Vector2 NoteGradient1 = new Vector2(0, 1f);
@@ -172,39 +179,42 @@ public class ClassicRender : IRender
     private float pixelsPerSecond;
     private float scwidth;
     private float sepwdth;
-    void RenderNote(MidiNote n, float d, float renderCutoff, CommandList CL, RenderSettings settings)
+
+    void RenderNote(MidiNote n, float d, float renderCutoff, CommandList CL, RenderSettings settings, ref MidiFile f)
     {
         if ((quadBufferPos + 2) >= quadBufferLength)
             FlushQuadBuffer(CL, false);
         float y1, y2, x2;
         var k = n.Key;
         /*
-		x1 = x1array[k];
-		wdth = wdtharray[k];
-		x2 = x1 + wdth;*/
+        x1 = x1array[k];
+        wdth = wdtharray[k];
+        x2 = x1 + wdth;*/
         ref readonly var x1 = ref x1array[k];
         ref readonly var wdth = ref wdtharray[k];
         x2 = x1 + wdth;
-        float timeFromEnd = renderCutoff - n.EndTime;    // Tiempo desde el final de la nota
+        float timeFromEnd = renderCutoff - n.EndTime; // Tiempo desde el final de la nota
         float timeFromStart = renderCutoff - n.StartTime; // Tiempo desde el inicio de la nota
-                                                          //y1 = 1 - (renderCutoff - n.EndTime) * notePosFactor;
+        //y1 = 1 - (renderCutoff - n.EndTime) * notePosFactor;
 
         if (!n.hasEnd)
             y1 = 1f + paddingy; // sometimes When this happens the outline appears at the top of the screen when it shouldn't so we add the Padding Y
         else
         {
             y1 = 1f - timeFromEnd * pixelsPerSecond;
-            if (y1 > 1)
-                y1 = 1;
+            //if (y1 > 1)
+            //    y1 = 1;
         }
+
         //y2 = 1 - (renderCutoff - n.StartTime) * notePosFactor;
         y2 = 1f - timeFromStart * pixelsPerSecond;
         //y1 = Math.Clamp(y1, pianoHeight, 1);
         //y2 = Math.Clamp(y2, pianoHeight, 1);
-        if (y2 < pianoHeight)
-            y2 = pianoHeight;
-
-        var cc = n.Color;
+        /*if (y2 < pianoHeight)
+            y2 = pianoHeight;*/
+        ref readonly var trkClr = ref f.Tracks[n.Track].NoteColors[n.Channel];
+        //var cc = n.Color;
+        ref readonly var cc = ref trkClr;
         var coll = cc.left;
         var colr = cc.right;
         if (n.StartTime < d)
@@ -226,15 +236,16 @@ public class ClassicRender : IRender
         }
         //float pixels = (y1 - y2) * settings.Height;
         //float minNoteHeight = 0.001f * (1f / dt); // Scale threshold with deltaTimeOnScreen
-        if (y1 - y2 < (paddingy))
+        /*if (y1 - y2 < (paddingy))
         {
             return; // Skip small notes
-        }
+        }*/ //Die Sucker
 
         DrawingInfo.notes++;
 
 
-        AddQuad(ref pos, x2, y2, x2, y1, x1, y1, x1, y2, coll, coll, colr, colr, NoteShadow, NoteShadow, NoteShadow, NoteShadow);
+        AddQuad(ref pos, x2, y2, x2, y1, x1, y1, x1, y2, coll, coll, colr, colr, NoteShadow, NoteShadow, NoteShadow,
+            NoteShadow);
 
         quadBufferPos++;
         //float pixels = (y1 - y2) * settings.Height;
@@ -247,12 +258,61 @@ public class ClassicRender : IRender
             y1 -= paddingy;
             y2 += paddingy;
 
-            AddQuad(ref pos, x2, y2, x2, y1, x1 + paddingx, y1, x1 + paddingx, y2, coll, coll, colr, colr, NoteGradient0, NoteGradient0,
+            AddQuad(ref pos, x2, y2, x2, y1, x1 + paddingx, y1, x1 + paddingx, y2, coll, coll, colr, colr,
+                NoteGradient0, NoteGradient0,
                 NoteGradient1, NoteGradient1);
 
             quadBufferPos++;
         }
     }
+    static int LastStartBefore(Span<MidiNote> notes, float renderCutoff)
+    {
+        int left = 0;
+        int right = notes.Length - 1;
+        int result = -1;
+
+        while (left <= right)
+        {
+            int mid = (left + right) >> 1;
+            if (notes[mid].StartTime < renderCutoff)
+            {
+                result = mid;
+                left = mid + 1;
+            }
+            else
+            {
+                right = mid - 1;
+            }
+        }
+
+        return result;
+    }
+
+    static int FirstEndAfter(Span<MidiNote> notes, float d)
+    {
+        int left = 0;
+        int right = notes.Length - 1;
+        int result = notes.Length;
+
+        while (left <= right)
+        {
+            int mid = (left + right) >> 1;
+
+            if (!notes[mid].hasEnd || notes[mid].EndTime >= d)
+            {
+                result = mid;
+                right = mid - 1;
+            }
+            else
+            {
+                left = mid + 1;
+            }
+        }
+
+        return result;
+    }
+
+
     public void Render(MidiFile f, double midiTime, int deltaTimeOnScreen, RenderSettings settings, CommandList CL)
     {
         if (dt == -1 || dt != deltaTimeOnScreen)
@@ -262,11 +322,12 @@ public class ClassicRender : IRender
             paddingy = paddingx * settings.Width / settings.Height;
             notePosFactor = 1f / dt * (1f - pianoHeight); // Zenith
             blackAbove = settings.blackNotesAbove;
-            pixelsPerSecond = (1f - pianoHeight) / dt;  // Escala vertical por unidad de tiempo
+            pixelsPerSecond = (1f - pianoHeight) / dt; // Escala vertical por unidad de tiempo
             scwidth = settings.Width;
             sepwdth = (float)Math.Round(wdtharray[0] * scwidth / 20f);
             if (sepwdth == 0) sepwdth = 1;
         }
+
         Array.Copy(_origColors, origColors, 257);
         for (int i = 0; i < 514; i++)
         {
@@ -292,68 +353,123 @@ public class ClassicRender : IRender
         float d = (float)midiTime;
         pos = 0;
         var t = f;
+        var Notes = CollectionsMarshal.AsSpan(t.Notes);
+        // Search last note with StartTime < renderCutoff
+        /*int startIndex = Notes.Length - 1; // Por defecto, la última nota
+        // Binary Search the last note O(log n) for R
+        // O(System.Diagnostics.Debug.Assert();
+        //if (Notes.Length > 0)
+        {
+            // Usar búsqueda binaria para encontrar el límite
+            int left = 0;
+            int right = Notes.Length - 1;
+            // left is lower if right == -1 (Notes.Length == 0)
+            while (left <= right)
+            {
+                // Saves 1 Division! and Subtraction!
+                int mid = (int)(((uint)right + (uint)left) >> 1);
+                //int mid = left + (right - left) / 2;
+
+                if (Notes[mid].StartTime < renderCutoff)
+                {
+                    // Esta nota cumple, pero podrían haber más después
+                    startIndex = mid;
+                    left = mid + 1; // Buscar en la mitad derecha
+                }
+                else
+                {
+                    // Esta nota no cumple, buscar en la mitad izquierda
+                    right = mid - 1;
+                }
+            }
+
+            if (Notes[0].StartTime >= renderCutoff)
+            {
+                startIndex = ~left;
+            }
+        }*/
+        int s = 0;
+        //int s = FirstEndAfter(Notes, d);
+        int e = LastStartBefore(Notes, renderCutoff);
         //foreach (var t in f.Tracks)
+        //if (s <= e)
+        if (e > 0)
         {
             if (blackAbove)
             {
-                foreach (var n in t.Notes)
+                //t.Notes.BinarySearch()?
+                //foreach (var n in t.Notes)
+                for (int i = s; i <= e; i++)
                 {
-                    if (n.EndTime >= d || !n.hasEnd)
+                    ref var n = ref Notes[i];
+                    var k = n.Key;
+                    bool isBlack = blackKeys[k];
+                    if (isBlack)
+                        continue;
+
+                    //if (n.StartTime >= renderCutoff) break;
+                    //if (n.EndTime < d && n.hasEnd) continue;
+                    /*if (n.EndTime >= d || !n.hasEnd)
                     {
                         if (n.StartTime < renderCutoff)
-                        {
-                            var k = n.Key;
-                            bool isBlack = blackKeys[k];
-                            if (isBlack)
-                                continue;
-                            RenderNote(n, d, renderCutoff, CL, settings);
-                        }
-                        else
-                        {
-                            break;
-                        }
+                        {*/
+                    RenderNote(n, d, renderCutoff, CL, settings, ref f);
+                    /*}
+                    else
+                    {
+                        break;
                     }
+                }*/
                 }
-                foreach (var n in t.Notes)
+
+                for (int i = s; i <= e; i++)
                 {
-                    if (n.EndTime >= d || !n.hasEnd)
+                    ref var n = ref Notes[i];
+                    var k = n.Key;
+                    bool isBlack = blackKeys[k];
+                    if (!isBlack)
+                        continue;
+                    //if (n.StartTime >= renderCutoff) break;
+                    //if (n.EndTime < d && n.hasEnd) continue;
+                    /*if (n.EndTime >= d || !n.hasEnd)
                     {
                         if (n.StartTime < renderCutoff)
-                        {
-                            var k = n.Key;
-                            bool isBlack = blackKeys[k];
-                            if (!isBlack)
-                                continue;
-                            RenderNote(n, d, renderCutoff, CL, settings);
-                        }
-                        else
-                        {
-                            break;
-                        }
+                        {*/
+                    RenderNote(n, d, renderCutoff, CL, settings, ref f);
+                    /*}
+                    else
+                    {
+                        break;
                     }
+                }*/
                 }
             }
             else
             {
-                foreach (var n in t.Notes)
+                for (int i = s; i <= e; i++)
                 {
-                    if (n.EndTime >= d || !n.hasEnd)
+                    ref var n = ref Notes[i];
+                    //if (n.StartTime >= renderCutoff) break;
+                    //if (n.EndTime < d && n.hasEnd) continue;
+                    /*if (n.EndTime >= d || !n.hasEnd)
                     {
                         if (n.StartTime < renderCutoff)
-                        {
-                            RenderNote(n, d, renderCutoff, CL, settings);
-                        }
-                        else
-                        {
-                            break;
-                        }
+                        {*/
+                    RenderNote(n, d, renderCutoff, CL, settings, ref f);
+                    /*}
+                    else
+                    {
+                        break;
                     }
+                }*/
                 }
             }
         }
+
         FlushQuadBuffer(CL);
 
         #region Keyboard
+
         float topRedStart = pianoHeight * .99f;
         float topRedEnd = pianoHeight * .94f;
         float topBarEnd = pianoHeight * .927f;
@@ -374,6 +490,7 @@ public class ClassicRender : IRender
         float keySpacing = 0;
 
         #region Decorations
+
         r = .086f;
         g = .086f;
         b = .086f;
@@ -425,6 +542,7 @@ public class ClassicRender : IRender
             S1, S1, S1, S1);
         quadBufferPos++;
         FlushQuadBuffer(CL);
+
         #endregion
 
         float ox1, ox2, oy1, oy2, ix1, ix2, iy1, iy2;
@@ -526,6 +644,7 @@ public class ClassicRender : IRender
             quadBufferPos++;
             FlushQuadBuffer(CL);
         }
+
         for (int n = kbfirstNote; n < kblastNote; n++)
         {
             if (!blackKeys[n]) continue;
@@ -692,10 +811,13 @@ public class ClassicRender : IRender
                 FlushQuadBuffer(CL);
             }
         }
+
         #endregion
+
         //FlushInstancedQuads();
         FlushQuadBuffer(CL, false);
     }
+
     private void AddQuad(ref int pos, float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4,
         RgbaFloatEva color1, RgbaFloatEva color2, RgbaFloatEva color3, RgbaFloatEva color4,
         Vector2 attrib1, Vector2 attrib2, Vector2 attrib3, Vector2 attrib4)
@@ -764,10 +886,10 @@ public class ClassicRender : IRender
 		Vertices[pos].Attrib = attrib4;
 		pos++;
 #endif
-
     }
 
-    public void Initialize(MidiFile file, RenderSettings settings, GraphicsDevice GD, ResourceFactory RF, Framebuffer FB)
+    public void Initialize(MidiFile file, RenderSettings settings, GraphicsDevice GD, ResourceFactory RF,
+        Framebuffer FB)
     {
         this.GD = GD;
         Initialized = true;
@@ -778,10 +900,12 @@ public class ClassicRender : IRender
 #endif
         for (var i = 0; i < VerticesBuffer.Length; i++)
         {
-            var buffer = RF.CreateBuffer(new((uint)(Vertices.Length * Vertex.SizeInBytes), BufferUsage.VertexBuffer | BufferUsage.Dynamic));
+            var buffer = RF.CreateBuffer(new((uint)(Vertices.Length * Vertex.SizeInBytes),
+                BufferUsage.VertexBuffer | BufferUsage.Dynamic));
             disposeGroup.Add(buffer);
             VerticesBuffer[i] = buffer;
         }
+
         for (int i = 0; i < Vertices.Length; i++)
         {
             Vertices[i] = new();
@@ -845,6 +969,7 @@ public class ClassicRender : IRender
             if (blackKeys[i]) keynum[i] = b++;
             else keynum[i] = w++;
         }
+
         float knmfn = keynum[firstNote];
         float knmln = keynum[lastNote - 1];
         if (blackKeys[firstNote]) knmfn = keynum[firstNote - 1] + 0.5f;
@@ -880,6 +1005,7 @@ public class ClassicRender : IRender
             }
         }
 
+
         kbfirstNote = (byte)firstNote;
         kblastNote = (byte)lastNote;
         if (blackKeys[firstNote]) kbfirstNote--;
@@ -900,6 +1026,7 @@ public class ClassicRender : IRender
         {
             trash.Dispose();
         }
+
         Vertices = null;
 #if VERTEX_USE_INDEX_BUFFER
 		indexes = null;

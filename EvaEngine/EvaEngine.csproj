@@ -5,7 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-
+        <Optimize>true</Optimize>
         <PublishAot>true</PublishAot>
         <PublishTrimmed>true</PublishTrimmed>
         <TrimMode>full</TrimMode>

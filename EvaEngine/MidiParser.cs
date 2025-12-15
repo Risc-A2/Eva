@@ -15,7 +15,7 @@ public class MidiTempoChange
     public uint Ticks;
     public uint Tempo;
 }
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
+[StructLayout(LayoutKind.Sequential/*, Pack = 1*/)]
 public class MidiNote : IComparable<MidiNote>
 {
     private byte flags = 0;
@@ -25,7 +25,8 @@ public class MidiNote : IComparable<MidiNote>
     public byte Velocity = 0;
     public long StartTime = 0;
     public long EndTime = 0;
-    public NoteColor Color;
+    public int Track = 0;
+    //public NoteColor Color;
     //public float Duration = 0; Inecesario uso de RAM
     public byte Channel = 0;
 
@@ -328,7 +329,8 @@ public class MidiTrack(MemoryMappedFile input, long len, long position, MidiFile
             StartTime = wallTime,
             Channel = channel,
             hasEnd = false,
-            Color = NoteColors[channel]
+            Track = TrkID
+            //Color = NoteColors[channel]
         };
         v.Push(n);
         Notes.Add(n);
@@ -882,7 +884,9 @@ public class MidiTrack(MemoryMappedFile input, long len, long position, MidiFile
         //}
     }
 
-    public NoteColor[] NoteColors;
+    public NoteColor[] NoteColors = new NoteColor[16];
+    public int TrkID;
+    //public uint[] NoteColorsIndexes = new uint[32];
     private void HandleUselessEvent1(byte status)
     {
         previousStatus = status;
@@ -971,7 +975,8 @@ public class MidiTrack(MemoryMappedFile input, long len, long position, MidiFile
         _Fasthandlers[14] = Nothing2;
         _Fasthandlers[15] = Nothing2;
         ActiveNotes = new Stack<MidiNote>[256 * 16];
-        NoteColors = new NoteColor[16];
+        Array.Clear(NoteColors);
+        //NoteColors = new NoteColor[16];
         Notes = new();
         Events = new();
         /*for (int i = 0; i < 256 * 16; i++)
@@ -1039,6 +1044,8 @@ public class MidiFile
         BPM = 0;
         PPQ = 0;
     }
+    //public Pallete.Color[] Pallete;
+    public ReadOnlyMemory<Pallete.Color> Palette;
 
     public async Task<bool> ParseFile(RenderSettings s, MemoryMappedFile fs, Image<Rgba32> DefaultPallete)
     {
@@ -1080,7 +1087,7 @@ public class MidiFile
             uint trackID = se.BReadUInt32(Endianness.BigEndian);
             if (trackID != 1297379947) // "MTrk"
             {
-                Console.WriteLine($"Invalid chunk {tracks}, continuing...");
+                Console.WriteLine($"Invalid chunk {tracks}, continuing...?");
                 continue; // Saltar a la siguiente iteración
             }
 
@@ -1093,6 +1100,7 @@ public class MidiFile
 
         Tracks = new MidiTrack[tracks];
         var trkcc = Pallete.GetColors(tracks, DefaultPallete);
+        Palette = trkcc.AsMemory();
         Console.WriteLine("Reading tracks...");
         uint maxWallTime = 0; // Tiempo máximo en ticks
         uint tc = 1;
@@ -1123,11 +1131,13 @@ public class MidiFile
         {
             var track = new MidiTrack(fs, len[i], beg[i], this);
             Tracks[i] = track;
+            track.TrkID = i;
             track.Read();
             var colorsForTrack = trkcc[i].Colors; // Colores asignados al track actual
             for (int j = 0; j < 16; j++)
             {
                 var c = new NoteColor();
+                //track.NoteColorsIndexes[j] = MakeTrackChannel((uint)i, (uint)j);
                 c.left = colorsForTrack[j * 2];
                 c.right = colorsForTrack[j * 2 + 1];
                 track.NoteColors[j] = c;
